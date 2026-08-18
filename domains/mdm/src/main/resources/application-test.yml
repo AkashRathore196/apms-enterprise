@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16-alpine:///apms_mdm
+    username: test
+    password: test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  sql:
+    init:
+      mode: never
