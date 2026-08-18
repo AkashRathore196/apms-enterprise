@@ -11,6 +11,9 @@ on:
       - 'domains/mdm/**'
       - '.github/workflows/mdm-build.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -27,6 +30,9 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+
+      - name: Validate Maven model
+        run: mvn -B -DskipTests validate
 
       - name: Build and test
         run: mvn -B test
