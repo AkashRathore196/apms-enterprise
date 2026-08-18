@@ -6,10 +6,16 @@ import com.apms.mdm.common.outbox.ProcessedEventRepository;
 import com.apms.mdm.integration.kafka.PartyEventConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,12 +40,13 @@ class EventingIntegrationTest {
                 null,
                 Map.of("partyId", "test")
         );
-        String raw = new ObjectMapper().writeValueAsString(event);
+        ObjectMapper mapper = new ObjectMapper();
+        String raw = mapper.writeValueAsString(event);
 
         consumer.consume(raw);
         consumer.consume(raw);
 
-        assertEquals(1, repository.count());
+        assertEquals(1, repository.size());
         assertTrue(repository.existsById(eventId.toString()));
     }
 
@@ -47,8 +54,8 @@ class EventingIntegrationTest {
         private final Map<String, ProcessedEvent> entries = new HashMap<>();
 
         @Override
-        public boolean existsById(String eventId) {
-            return entries.containsKey(eventId);
+        public boolean existsById(String id) {
+            return entries.containsKey(id);
         }
 
         @Override
@@ -63,14 +70,23 @@ class EventingIntegrationTest {
             }
         }
 
-        int count() {
+        int size() {
             return entries.size();
         }
 
-        @Override public <S extends ProcessedEvent> java.util.List<S> saveAll(Iterable<S> entities) { throw new UnsupportedOperationException(); }
-        @Override public java.util.Optional<ProcessedEvent> findById(String id) { return java.util.Optional.ofNullable(entries.get(id)); }
-        @Override public java.util.List<ProcessedEvent> findAll() { return java.util.List.copyOf(entries.values()); }
-        @Override public java.util.List<ProcessedEvent> findAllById(Iterable<String> ids) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> List<S> saveAll(Iterable<S> entities) { throw new UnsupportedOperationException(); }
+        @Override public Optional<ProcessedEvent> findById(String id) { return Optional.ofNullable(entries.get(id)); }
+        @Override public boolean exists(Example<ProcessedEvent> example) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> Optional<S> findOne(Example<S> example) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> List<S> findAll(Example<S> example) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> List<S> findAll(Example<S> example, Sort sort) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> Page<S> findAll(Example<S> example, Pageable pageable) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> long count(Example<S> example) { throw new UnsupportedOperationException(); }
+        @Override public <S extends ProcessedEvent> boolean exists(Example<S> example, boolean unused) { throw new UnsupportedOperationException(); }
+        @Override public List<ProcessedEvent> findAll() { return List.copyOf(entries.values()); }
+        @Override public List<ProcessedEvent> findAll(Sort sort) { return findAll(); }
+        @Override public Page<ProcessedEvent> findAll(Pageable pageable) { throw new UnsupportedOperationException(); }
+        @Override public List<ProcessedEvent> findAllById(Iterable<String> ids) { throw new UnsupportedOperationException(); }
         @Override public long count() { return entries.size(); }
         @Override public void deleteById(String id) { entries.remove(id); }
         @Override public void delete(ProcessedEvent entity) { throw new UnsupportedOperationException(); }
