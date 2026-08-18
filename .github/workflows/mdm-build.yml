@@ -1,0 +1,41 @@
+name: MDM Build
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'domains/mdm/**'
+      - '.github/workflows/mdm-build.yml'
+  pull_request:
+    paths:
+      - 'domains/mdm/**'
+      - '.github/workflows/mdm-build.yml'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: domains/mdm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and test
+        run: mvn -B test
+
+      - name: Package
+        run: mvn -B -DskipTests package
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdm-service
+          path: domains/mdm/target/*.jar
