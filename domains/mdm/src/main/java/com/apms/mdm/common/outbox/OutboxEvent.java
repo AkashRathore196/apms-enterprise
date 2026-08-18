@@ -46,5 +46,6 @@ public class OutboxEvent {
     public UUID getAggregateId() { return aggregateId; }
     public String getEventType() { return eventType; }
     public String getPayload() { return payload; }
+    public String getStatus() { return status; }
     public void markPublished() { this.status = "PUBLISHED"; }
 }
