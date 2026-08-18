@@ -1,0 +1,8 @@
+CREATE TABLE party (
+  party_id UUID PRIMARY KEY,
+  party_type VARCHAR(32) NOT NULL,
+  lifecycle_state VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  version BIGINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
