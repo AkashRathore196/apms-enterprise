@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: APMS MDM API
+  version: 1.0.0
+paths:
+  /api/v1/parties:
+    post:
+      summary: Create an organization party in DRAFT state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Created
+  /api/v1/parties/{id}/submit:
+    post:
+      summary: Submit a party for governance review
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Submitted }
+  /api/v1/parties/{id}/approve:
+    post:
+      summary: Approve and activate a party
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Approved }
+components:
+  schemas:
+    CreateOrganizationRequest:
+      type: object
+      required: [legalName]
+      properties:
+        legalName: { type: string, maxLength: 300 }
+        displayName: { type: string, maxLength: 300 }
