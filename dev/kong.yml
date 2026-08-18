@@ -1,0 +1,10 @@
+_format_version: "3.0"
+
+services:
+  - name: mdm-service
+    url: http://host.docker.internal:8080
+    routes:
+      - name: mdm-api
+        paths:
+          - /api/v1
+        strip_path: false
