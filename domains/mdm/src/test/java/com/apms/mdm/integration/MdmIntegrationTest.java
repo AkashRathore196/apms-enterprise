@@ -20,8 +20,7 @@ class MdmIntegrationTest {
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withStartupTimeout(Duration.ofMinutes(2));
 
-    // Apache Kafka 3.8 is not a Confluent image. Use GenericContainer so
-    // Testcontainers does not apply Confluent-specific startup scripts.
+    // Apache Kafka 3.8 is configured as a single-node KRaft broker/controller.
     @Container
     static final GenericContainer<?> kafka =
             new GenericContainer<>(DockerImageName.parse("apache/kafka:3.8.0"))
