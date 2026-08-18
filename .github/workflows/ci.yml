@@ -1,0 +1,23 @@
+name: APMS CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  repository-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repository structure
+        run: |
+          test -f README.md
+          test -d architecture
+          test -d contracts
+          test -d platform
+          test -d domains
+          test -d infrastructure
+          test -d dev
+          test -d quality
+          test -d docs
