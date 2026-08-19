@@ -10,9 +10,9 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
@@ -80,7 +80,9 @@ class KafkaBrokerIntegrationTest {
             long deadline = System.currentTimeMillis() + 15_000;
             while (System.currentTimeMillis() < deadline && observed < 2) {
                 for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
-                    if ("event-1".equals(record.value())) observed++;
+                    if ("event-1".equals(record.value())) {
+                        observed++;
+                    }
                 }
             }
         }
@@ -95,15 +97,18 @@ class KafkaBrokerIntegrationTest {
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.ACKS_CONFIG, "all"
         );
+
         long deadline = System.currentTimeMillis() + 30_000;
         while (true) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
                 producer.partitionsFor("__mdm_probe__");
                 return;
             } catch (Exception ex) {
-                if (System.currentTimeMillis() >= deadline) throw ex;
+                if (System.currentTimeMillis() >= deadline) {
+                    throw ex;
+                }
                 Thread.sleep(500);
             }
         }
     }
-}"}
+}
