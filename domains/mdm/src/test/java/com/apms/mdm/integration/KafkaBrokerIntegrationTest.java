@@ -40,6 +40,8 @@ class KafkaBrokerIntegrationTest {
                     .withEnv("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR", "1")
                     .withEnv("KAFKA_TRANSACTION_STATE_LOG_MIN_ISR", "1")
                     .withEnv("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")
+                    .withEnv("KAFKA_NUM_PARTITIONS", "1")
+                    .withEnv("KAFKA_INTER_BROKER_LISTENER_NAME", "PLAINTEXT")
                     .withEnv("CLUSTER_ID", "MkU3OEVBNTcwNTJENDM2Qk")
                     .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
 
@@ -48,6 +50,8 @@ class KafkaBrokerIntegrationTest {
         String topic = "mdm-party-approved-test-" + UUID.randomUUID();
         String bootstrap = kafka.getHost() + ":" + kafka.getMappedPort(9092);
         String group = "mdm-test-" + UUID.randomUUID();
+
+        waitForKafka(bootstrap);
 
         Map<String, Object> producerProps = Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
@@ -83,4 +87,23 @@ class KafkaBrokerIntegrationTest {
 
         assertEquals(2, observed, "Expected exactly two Kafka deliveries");
     }
-}
+
+    private static void waitForKafka(String bootstrap) throws Exception {
+        Map<String, Object> props = Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.ACKS_CONFIG, "all"
+        );
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (true) {
+            try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
+                producer.partitionsFor("__mdm_probe__");
+                return;
+            } catch (Exception ex) {
+                if (System.currentTimeMillis() >= deadline) throw ex;
+                Thread.sleep(500);
+            }
+        }
+    }
+}"}
