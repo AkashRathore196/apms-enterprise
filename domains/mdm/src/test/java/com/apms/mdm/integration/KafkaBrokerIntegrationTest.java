@@ -32,13 +32,14 @@ class KafkaBrokerIntegrationTest {
                     .withEnv("KAFKA_NODE_ID", "1")
                     .withEnv("KAFKA_PROCESS_ROLES", "broker,controller")
                     .withEnv("KAFKA_LISTENERS", "PLAINTEXT://:9092,CONTROLLER://:9093")
-                    .withEnv("KAFKA_ADVERTISED_LISTENERS", "PLAINTEXT://:9092")
+                    .withEnv("KAFKA_ADVERTISED_LISTENERS", "PLAINTEXT://127.0.0.1:9092")
                     .withEnv("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
                     .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT")
                     .withEnv("KAFKA_CONTROLLER_QUORUM_VOTERS", "1@localhost:9093")
                     .withEnv("KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR", "1")
                     .withEnv("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR", "1")
                     .withEnv("KAFKA_TRANSACTION_STATE_LOG_MIN_ISR", "1")
+                    .withEnv("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")
                     .withEnv("CLUSTER_ID", "MkU3OEVBNTcwNTJENDM2Qk")
                     .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
 
