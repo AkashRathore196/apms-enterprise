@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @Testcontainers
 class KafkaBrokerIntegrationTest {
@@ -32,7 +32,7 @@ class KafkaBrokerIntegrationTest {
                     .withEnv("KAFKA_NODE_ID", "1")
                     .withEnv("KAFKA_PROCESS_ROLES", "broker,controller")
                     .withEnv("KAFKA_LISTENERS", "PLAINTEXT://:9092,CONTROLLER://:9093")
-                    .withEnv("KAFKA_ADVERTISED_LISTENERS", "PLAINTEXT://localhost:9092")
+                    .withEnv("KAFKA_ADVERTISED_LISTENERS", "PLAINTEXT://:9092")
                     .withEnv("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
                     .withEnv("KAFKA_LISTENER_SECURITY_PROTOCOL_MAP", "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT")
                     .withEnv("KAFKA_CONTROLLER_QUORUM_VOTERS", "1@localhost:9093")
@@ -43,8 +43,8 @@ class KafkaBrokerIntegrationTest {
                     .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
 
     @Test
-    void publishesAndConsumesDuplicateEvents() {
-        String topic = "mdm.party.approved.v1";
+    void publishesAndConsumesDuplicateEvents() throws Exception {
+        String topic = "mdm-party-approved-test-" + UUID.randomUUID();
         String bootstrap = kafka.getHost() + ":" + kafka.getMappedPort(9092);
         String group = "mdm-test-" + UUID.randomUUID();
 
@@ -58,8 +58,6 @@ class KafkaBrokerIntegrationTest {
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(producerProps)) {
             producer.send(new ProducerRecord<>(topic, "party-1", "event-1")).get();
             producer.send(new ProducerRecord<>(topic, "party-1", "event-1")).get();
-        } catch (Exception e) {
-            throw new AssertionError("Kafka publish failed", e);
         }
 
         Map<String, Object> consumerProps = Map.of(
@@ -82,6 +80,6 @@ class KafkaBrokerIntegrationTest {
             }
         }
 
-        assertTrue(observed >= 2, "Expected both duplicate Kafka deliveries");
+        assertEquals(2, observed, "Expected exactly two Kafka deliveries");
     }
 }
