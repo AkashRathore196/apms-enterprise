@@ -1,0 +1,45 @@
+name: MDM Regression
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'domains/mdm/**'
+      - '.github/workflows/mdm-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: domains/mdm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Unit and application tests
+        run: mvn -B -Dtest='com.apms.mdm.MdmApplicationTest,com.apms.mdm.party.*Test,com.apms.mdm.integration.ProcessedEventIdempotencyTest' test
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: domains/mdm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: PostgreSQL integration
+        run: mvn -B -Dtest='com.apms.mdm.party.PartyServiceIntegrationTest,com.apms.mdm.integration.MdmIntegrationTest' test
