@@ -1,0 +1,1 @@
+CI trigger marker for the isolated Outbox Publisher acceptance workflow. No runtime code or production behavior is changed.
