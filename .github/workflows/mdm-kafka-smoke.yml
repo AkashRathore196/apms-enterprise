@@ -47,15 +47,15 @@ jobs:
 
       - name: Produce one test record
         run: |
-          docker exec mdm-kafka-smoke /opt/kafka/bin/kafka-console-producer.sh \
+          printf '%s\n' 'smoke-event' | docker exec -i mdm-kafka-smoke \
+            /opt/kafka/bin/kafka-console-producer.sh \
             --bootstrap-server localhost:9092 \
-            --topic mdm-kafka-smoke <<'EOF'
-smoke-event
-EOF
+            --topic mdm-kafka-smoke
 
       - name: Consume one test record
         run: |
-          timeout 30s docker exec mdm-kafka-smoke /opt/kafka/bin/kafka-console-consumer.sh \
+          timeout 30s docker exec mdm-kafka-smoke \
+            /opt/kafka/bin/kafka-console-consumer.sh \
             --bootstrap-server localhost:9092 \
             --topic mdm-kafka-smoke \
             --from-beginning \
