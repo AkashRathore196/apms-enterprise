@@ -1,0 +1,2 @@
+MDM security acceptance trigger.
+This file exists only to ensure the disposable Keycloak/Kong workflow path is exercised by a pull-request event.
