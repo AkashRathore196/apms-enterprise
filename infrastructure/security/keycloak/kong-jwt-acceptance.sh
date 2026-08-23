@@ -50,53 +50,18 @@ ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
 JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
 curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
 
+# Authentication boundary through Kong.
 assert_exact_status 401 "" "missing-token"
 
-KEY_DIR="$(mktemp -d)"
-trap 'rm -rf "$KEY_DIR"' EXIT
-openssl genrsa -out "$KEY_DIR/ci-private.pem" 2048 >/dev/null 2>&1
-PUBLIC_KEY="$(openssl rsa -in "$KEY_DIR/ci-private.pem" -pubout 2>/dev/null)"
+# The workflow must provision the signed-key material before Kong starts.
+KEY_DIR="${KEY_DIR:-/tmp/mdm-security-key}"
+PRIVATE_KEY="$KEY_DIR/ci-private.pem"
+if [[ ! -f "$PRIVATE_KEY" ]]; then
+  echo "missing pre-provisioned CI signing key: $PRIVATE_KEY" >&2
+  exit 1
+fi
 
-# Render a disposable DB-less Kong config with the exact RSA public key.
-RENDERED_KONG="$(mktemp)"
-python3 - "$PUBLIC_KEY" "$ISSUER" > "$RENDERED_KONG" <<'PY'
-import sys
-key = sys.argv[1].replace('\\n', '\\n').replace('\r', '')
-issuer = sys.argv[2]
-print('_format_version: "3.0"')
-print('_transform: true')
-print('consumers:')
-print('  - username: mdm-security-fixture')
-print('    jwt_secrets:')
-print('      - key: ' + issuer)
-print('        algorithm: RS256')
-print('        rsa_public_key: |')
-for line in sys.argv[1].splitlines():
-    print('          ' + line)
-print('services:')
-print('  - name: mdm')
-print('    url: http://host.docker.internal:8080')
-print('    routes:')
-print('      - name: mdm-api')
-print('        paths:')
-print('          - /mdm')
-print('        strip_path: false')
-print('    plugins:')
-print('      - name: jwt')
-print('        config:')
-print('          claims_to_verify:')
-print('            - exp')
-print('            - nbf')
-print('          key_claim_name: iss')
-print('          maximum_expiration: 3600')
-print('          run_on_preflight: true')
-PY
-
-# Replace the running Kong config in the disposable stack by restarting Kong with rendered config.
-docker cp "$RENDERED_KONG" "$(docker compose -f infrastructure/security/docker-compose.security.yml ps -q kong):/opt/kong/kong-rendered.yml"
-docker exec "$(docker compose -f infrastructure/security/docker-compose.security.yml ps -q kong)" sh -lc 'KONG_DECLARATIVE_CONFIG=/opt/kong/kong-rendered.yml kong reload 2>/dev/null || true'
-
-HEADER_B64="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+HEADER_B64="$(printf '%s' '{"alg":"RS256","typ":"JWT","kid":"ci-test-key"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
 NOW="$(date +%s)"
 make_token() {
   local username="$1" roles_json="$2"
@@ -104,7 +69,7 @@ make_token() {
   payload="$(jq -cn --arg sub "$username" --arg iss "$ISSUER" --argjson roles "$roles_json" --argjson iat "$NOW" --argjson exp "$((NOW+600))" '{sub:$sub,iss:$iss,aud:"mdm-api",iat:$iat,exp:$exp,realm_access:{roles:$roles}}')"
   payload_b64="$(printf '%s' "$payload" | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
   signing_input="$HEADER_B64.$payload_b64"
-  signature_b64="$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$KEY_DIR/ci-private.pem" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+  signature_b64="$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$PRIVATE_KEY" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
   printf '%s.%s' "$signing_input" "$signature_b64"
 }
 
@@ -132,6 +97,6 @@ cat > /tmp/mdm-security-result.json <<EOF
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
   "signedFixture": "rs256",
-  "issuerCredential": "declarative-db-less"
+  "issuerCredential": "preprovisioned-db-less"
 }
 EOF
