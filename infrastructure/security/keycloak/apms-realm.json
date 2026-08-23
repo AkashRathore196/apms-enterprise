@@ -8,12 +8,20 @@
       "publicClient": true,
       "protocol": "openid-connect",
       "directAccessGrantsEnabled": true
+    },
+    {
+      "clientId": "mdm-service-client",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true
     }
   ],
   "roles": {
     "realm": [
       {"name": "mdm_operator"},
-      {"name": "mdm_reader"}
+      {"name": "mdm_reader"},
+      {"name": "mdm_service"}
     ]
   },
   "users": [
@@ -34,6 +42,12 @@
       "enabled": true,
       "credentials": [{"type": "password", "value": "cross", "temporary": false}],
       "realmRoles": []
+    },
+    {
+      "username": "mdm-service",
+      "enabled": true,
+      "credentials": [{"type": "password", "value": "service", "temporary": false}],
+      "realmRoles": ["mdm_service"]
     }
   ]
 }
