@@ -43,9 +43,7 @@ jobs:
 
       - name: Start disposable security runtime
         shell: bash
-        run: |
-          set -euo pipefail
-          docker compose -f infrastructure/security/docker-compose.security.yml up -d
+        run: docker compose -f infrastructure/security/docker-compose.security.yml up -d
 
       - name: Start MDM service
         shell: bash
@@ -53,7 +51,7 @@ jobs:
           set -euo pipefail
           nohup java -jar domains/mdm/target/mdm-service-0.1.0-SNAPSHOT.jar \
             --server.port=8080 \
-            --spring.datasource.url=jdbc:h2:mem:mdmsecurity;MODE=PostgreSQL;DB_CLOSE_DELAY=-1 \
+            --spring.datasource.url='jdbc:h2:mem:mdmsecurity;MODE=PostgreSQL;DB_CLOSE_DELAY=-1' \
             --spring.datasource.username=sa \
             --spring.datasource.password= \
             --spring.jpa.hibernate.ddl-auto=create-drop \
@@ -99,5 +97,4 @@ jobs:
       - name: Cleanup disposable runtime
         if: always()
         shell: bash
-        run: |
-          docker compose -f infrastructure/security/docker-compose.security.yml down -v
+        run: docker compose -f infrastructure/security/docker-compose.security.yml down -v
