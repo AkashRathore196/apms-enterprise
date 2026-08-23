@@ -120,6 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           nohup java -jar domains/mdm/target/mdm-service-0.1.0-SNAPSHOT.jar \
+            --spring.profiles.active=security \
             --server.port=8080 \
             --spring.datasource.url='jdbc:postgresql://localhost:15432/apms_mdm' \
             --spring.datasource.username=mdm \
