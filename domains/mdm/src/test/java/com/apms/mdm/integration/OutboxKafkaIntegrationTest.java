@@ -1,7 +1,5 @@
 package com.apms.mdm.integration;
 
-import com.apms.mdm.common.outbox.OutboxEvent;
-import com.apms.mdm.common.outbox.OutboxRepository;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -10,7 +8,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -22,7 +19,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Testcontainers
 class OutboxKafkaIntegrationTest {
@@ -48,7 +44,7 @@ class OutboxKafkaIntegrationTest {
                     .waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)));
 
     @Test
-    void publishesOutboxEventAndReceivesItAfterBrokerAcknowledgement() throws Exception {
+    void publishesEventAndReceivesItAfterBrokerAcknowledgement() throws Exception {
         String topic = "mdm-outbox-test-" + UUID.randomUUID();
         String bootstrap = kafka.getHost() + ":" + kafka.getMappedPort(9092);
         String payload = "{\"partyId\":\"" + UUID.randomUUID() + "\"}";
@@ -62,11 +58,9 @@ class OutboxKafkaIntegrationTest {
                 ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 5_000
         );
 
-        long timestamp;
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(producerProps)) {
-            timestamp = producer.send(new ProducerRecord<>(topic, "party-1", payload)).get().getRecordMetadata().timestamp();
+            producer.send(new ProducerRecord<>(topic, "party-1", payload)).get();
         }
-        assertNotNull(timestamp);
 
         Map<String, Object> consumerProps = Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
