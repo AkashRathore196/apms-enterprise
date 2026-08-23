@@ -19,6 +19,6 @@ services:
           maximum_expiration: 3600
           run_on_preflight: true
 
-# Trust material for the disposable CI/local profile is provisioned by the
-# acceptance harness. Production signing keys, bearer tokens, and secrets
-# must never be committed to this repository.
+# The disposable CI acceptance harness must provision the issuer/JWKS trust
+# material at runtime. No production signing keys, bearer tokens, or secrets
+# are committed to this repository.
