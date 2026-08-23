@@ -5,7 +5,6 @@ BASE_URL="${KONG_BASE_URL:-http://localhost:18000}"
 REALM_URL="${KEYCLOAK_REALM_URL:-http://localhost:18080/realms/apms}"
 TOKEN_URL="$REALM_URL/protocol/openid-connect/token"
 CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mdm-test-client}"
-CLIENT_SECRET="${KEYCLOAK_CLIENT_SECRET:-}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 2; }; }
 require_cmd curl
@@ -63,19 +62,13 @@ assert_success_and_identity() {
 get_token() {
   local user="$1" password="$2"
   local response status body
-  local -a args
-  args=(
-    -sS -X POST "$TOKEN_URL"
-    -H 'Content-Type: application/x-www-form-urlencoded'
-    --data-urlencode "client_id=$CLIENT_ID"
-    --data-urlencode 'grant_type=password'
-    --data-urlencode "username=$user"
-    --data-urlencode "password=$password"
-  )
-  if [[ -n "$CLIENT_SECRET" ]]; then
-    args+=(--data-urlencode "client_secret=$CLIENT_SECRET")
-  fi
-  response="$(curl "${args[@]}" -w $'\n%{http_code}')"
+  response="$(curl -sS -X POST "$TOKEN_URL" \
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode "client_id=$CLIENT_ID" \
+    --data-urlencode 'grant_type=password' \
+    --data-urlencode "username=$user" \
+    --data-urlencode "password=$password" \
+    -w $'\n%{http_code}')"
   status="$(printf '%s' "$response" | tail -n1)"
   body="$(printf '%s' "$response" | sed '$d')"
   if [[ "$status" != "200" ]]; then
@@ -90,10 +83,8 @@ DISCOVERY="$(curl -fsS "$REALM_URL/.well-known/openid-configuration")"
 printf '%s' "$DISCOVERY" | jq -e '.issuer and .jwks_uri' >/dev/null
 curl -fsS "$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')" | jq -e '.keys | length > 0' >/dev/null
 
-# Authentication boundary through Kong.
 assert_exact_status 401 "" "missing-token"
 
-# Use real Keycloak-issued tokens so Kong and MDM validate against the same issuer/JWKS authority.
 operator_token="$(get_token mdm-operator operator)"
 reader_token="$(get_token mdm-reader reader)"
 cross_token="$(get_token cross-domain cross)"
@@ -117,7 +108,7 @@ cat > /tmp/mdm-security-result.json <<EOF
   "crossDomain": 403,
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
-  "signedFixture": "keycloak-issued",
+  "tokenAuthority": "keycloak-issued",
   "identityIntegrity": "verified"
 }
 EOF
