@@ -41,18 +41,43 @@ jobs:
         working-directory: domains/mdm
         run: mvn -B -DskipTests package
 
-      - name: Prepare disposable Kong JWT trust material
+      - name: Start PostgreSQL for MDM
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name apms-mdm-security-postgres \
+            -e POSTGRES_DB=apms_mdm \
+            -e POSTGRES_USER=mdm \
+            -e POSTGRES_PASSWORD=mdm \
+            -p 15432:5432 \
+            postgres:16-alpine
+
+      - name: Wait for PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90 bash -c 'until docker exec apms-mdm-security-postgres pg_isready -U mdm -d apms_mdm >/dev/null 2>&1; do sleep 2; done'
+
+      - name: Start Keycloak
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f infrastructure/security/docker-compose.security.yml up -d keycloak
+
+      - name: Wait for Keycloak
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null; do sleep 2; done'
+
+      - name: Prepare Kong trust material
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/mdm-security-key
           openssl genrsa -out /tmp/mdm-security-key/ci-private.pem 2048 >/dev/null 2>&1
           openssl rsa -in /tmp/mdm-security-key/ci-private.pem -pubout -out /tmp/mdm-security-key/ci-public.pem >/dev/null 2>&1
-
-          docker compose -f infrastructure/security/docker-compose.security.yml up -d keycloak
-          timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null; do sleep 2; done'
           ISSUER="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.issuer')"
-
           python3 - "$ISSUER" /tmp/mdm-security-key/ci-public.pem > /tmp/kong-rendered.yml <<'PY'
           import pathlib, sys
           issuer = sys.argv[1]
@@ -86,24 +111,7 @@ jobs:
           print('          run_on_preflight: true')
           PY
 
-      - name: Start PostgreSQL for MDM
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run -d --name apms-mdm-security-postgres \
-            -e POSTGRES_DB=apms_mdm \
-            -e POSTGRES_USER=mdm \
-            -e POSTGRES_PASSWORD=mdm \
-            -p 15432:5432 \
-            postgres:16-alpine
-
-      - name: Wait for PostgreSQL
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 90 bash -c 'until docker exec apms-mdm-security-postgres pg_isready -U mdm -d apms_mdm >/dev/null 2>&1; do sleep 2; done'
-
-      - name: Start disposable security runtime
+      - name: Start Kong
         shell: bash
         run: |
           set -euo pipefail
@@ -126,13 +134,8 @@ jobs:
             --spring.datasource.username=mdm \
             --spring.datasource.password=mdm \
             --spring.jpa.hibernate.ddl-auto=validate \
+            --spring.security.oauth2.resourceserver.jwt.jwk-set-uri='http://localhost:18080/realms/apms/protocol/openid-connect/certs' \
             > /tmp/mdm-security.log 2>&1 &
-
-      - name: Wait for Keycloak readiness
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null; do sleep 2; done'
 
       - name: Wait for Kong readiness
         shell: bash
@@ -145,15 +148,10 @@ jobs:
         run: |
           set -euo pipefail
           for i in {1..60}; do
-            if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1; then
-              exit 0
-            fi
-            if [[ -s /tmp/mdm-security.log ]]; then
-              tail -40 /tmp/mdm-security.log >&2 || true
-            fi
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1; then exit 0; fi
+            if [[ -s /tmp/mdm-security.log ]]; then tail -40 /tmp/mdm-security.log >&2 || true; fi
             sleep 2
           done
-          echo 'MDM failed to become ready. Final startup log:' >&2
           cat /tmp/mdm-security.log >&2 || true
           exit 1
 
@@ -180,12 +178,12 @@ jobs:
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
             docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
 
-      - name: Publish PostgreSQL container logs
+      - name: Publish PostgreSQL logs
         if: always()
         shell: bash
         run: docker logs apms-mdm-security-postgres > /tmp/postgres-security.log 2>&1 || true
 
-      - name: Cleanup disposable runtime
+      - name: Cleanup
         if: always()
         shell: bash
         run: |
