@@ -12,10 +12,17 @@ jobs:
   security-acceptance:
     name: Keycloak/Kong security acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
 
       - name: Validate security acceptance contract
         shell: bash
@@ -29,20 +36,28 @@ jobs:
           grep -q 'invalid signature -> 401' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
           grep -q 'valid token without required authority -> 403' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
 
-      - name: Validate runtime prerequisites
+      - name: Build MDM service
         shell: bash
-        run: |
-          set -euo pipefail
-          test -f infrastructure/security/docker-compose.security.yml
-          test -f infrastructure/security/keycloak/apms-realm.json
-          test -f infrastructure/security/kong/kong.yml
-          test -f infrastructure/security/keycloak/kong-jwt-acceptance.sh
+        working-directory: domains/mdm
+        run: mvn -B -DskipTests package
 
       - name: Start disposable security runtime
         shell: bash
         run: |
           set -euo pipefail
           docker compose -f infrastructure/security/docker-compose.security.yml up -d
+
+      - name: Start MDM service
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup java -jar domains/mdm/target/mdm-service-0.1.0-SNAPSHOT.jar \
+            --server.port=8080 \
+            --spring.datasource.url=jdbc:h2:mem:mdmsecurity;MODE=PostgreSQL;DB_CLOSE_DELAY=-1 \
+            --spring.datasource.username=sa \
+            --spring.datasource.password= \
+            --spring.jpa.hibernate.ddl-auto=create-drop \
+            > /tmp/mdm-security.log 2>&1 &
 
       - name: Wait for Keycloak readiness
         shell: bash
@@ -56,6 +71,12 @@ jobs:
           set -euo pipefail
           timeout 120 bash -c 'until curl -fsS http://localhost:18001/status >/dev/null; do sleep 2; done'
 
+      - name: Wait for MDM readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120 bash -c 'until curl -fsS http://localhost:8080/actuator/health >/dev/null; do sleep 2; done'
+
       - name: Run bounded authorization acceptance
         shell: bash
         run: |
@@ -63,12 +84,13 @@ jobs:
           chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
           infrastructure/security/keycloak/kong-jwt-acceptance.sh
 
-      - name: Publish contract/runtime evidence
+      - name: Publish runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mdm-security-acceptance-evidence
           path: |
+            /tmp/mdm-security.log
             infrastructure/security/README.md
             infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
