@@ -41,9 +41,28 @@ jobs:
         working-directory: domains/mdm
         run: mvn -B -DskipTests package
 
+      - name: Start PostgreSQL for MDM
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name apms-mdm-security-postgres \
+            -e POSTGRES_DB=apms_mdm \
+            -e POSTGRES_USER=mdm \
+            -e POSTGRES_PASSWORD=mdm \
+            -p 15432:5432 \
+            postgres:16-alpine
+
+      - name: Wait for PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90 bash -c 'until docker exec apms-mdm-security-postgres pg_isready -U mdm -d apms_mdm >/dev/null 2>&1; do sleep 2; done'
+
       - name: Start disposable security runtime
         shell: bash
-        run: docker compose -f infrastructure/security/docker-compose.security.yml up -d
+        run: |
+          set -euo pipefail
+          docker compose -f infrastructure/security/docker-compose.security.yml up -d
 
       - name: Start MDM service
         shell: bash
@@ -51,10 +70,10 @@ jobs:
           set -euo pipefail
           nohup java -jar domains/mdm/target/mdm-service-0.1.0-SNAPSHOT.jar \
             --server.port=8080 \
-            --spring.datasource.url='jdbc:h2:mem:mdmsecurity;MODE=PostgreSQL;DB_CLOSE_DELAY=-1' \
-            --spring.datasource.username=sa \
-            --spring.datasource.password= \
-            --spring.jpa.hibernate.ddl-auto=create-drop \
+            --spring.datasource.url='jdbc:postgresql://localhost:15432/apms_mdm' \
+            --spring.datasource.username=mdm \
+            --spring.datasource.password=mdm \
+            --spring.jpa.hibernate.ddl-auto=validate \
             > /tmp/mdm-security.log 2>&1 &
 
       - name: Wait for Keycloak readiness
@@ -94,7 +113,14 @@ jobs:
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
             docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
 
+      - name: Publish MDM container logs
+        if: always()
+        shell: bash
+        run: docker logs apms-mdm-security-postgres > /tmp/postgres-security.log 2>&1 || true
+
       - name: Cleanup disposable runtime
         if: always()
         shell: bash
-        run: docker compose -f infrastructure/security/docker-compose.security.yml down -v
+        run: |
+          docker compose -f infrastructure/security/docker-compose.security.yml down -v || true
+          docker rm -f apms-mdm-security-postgres >/dev/null 2>&1 || true
