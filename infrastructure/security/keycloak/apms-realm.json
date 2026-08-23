@@ -5,22 +5,21 @@
     {
       "clientId": "mdm-test-client",
       "enabled": true,
-      "publicClient": false,
+      "publicClient": true,
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": true,
-      "secret": "ci-mdm-test-secret"
+      "serviceAccountsEnabled": false
     },
     {
       "clientId": "mdm-service-client",
       "enabled": true,
-      "publicClient": false,
+      "publicClient": true,
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "secret": "ci-mdm-service-secret"
+      "defaultClientScopes": ["profile", "email", "roles", "web-origins"]
     }
   ],
   "roles": {
