@@ -1,0 +1,39 @@
+{
+  "realm": "apms",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "mdm-test-client",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "roles": {
+    "realm": [
+      {"name": "mdm_operator"},
+      {"name": "mdm_reader"}
+    ]
+  },
+  "users": [
+    {
+      "username": "mdm-operator",
+      "enabled": true,
+      "credentials": [{"type": "password", "value": "operator", "temporary": false}],
+      "realmRoles": ["mdm_operator"]
+    },
+    {
+      "username": "mdm-reader",
+      "enabled": true,
+      "credentials": [{"type": "password", "value": "reader", "temporary": false}],
+      "realmRoles": ["mdm_reader"]
+    },
+    {
+      "username": "cross-domain",
+      "enabled": true,
+      "credentials": [{"type": "password", "value": "cross", "temporary": false}],
+      "realmRoles": []
+    }
+  ]
+}
