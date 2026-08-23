@@ -1,9 +1,8 @@
 name: MDM Outbox Publisher Acceptance
 
 on:
-  push:
-    branches:
-      - feature/mdm-eventing-rebased
+  pull_request:
+    branches: [ main ]
     paths:
       - 'domains/mdm/**'
       - '.github/workflows/mdm-outbox-publisher-acceptance.yml'
