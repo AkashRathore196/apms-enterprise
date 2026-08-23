@@ -28,5 +28,12 @@
       {"name": "mdm_reader"},
       {"name": "mdm_service"}
     ]
+  },
+  "clientScopeMappings": {
+    "mdm-service-client": {
+      "realm": [
+        {"name": "mdm_service"}
+      ]
+    }
   }
 }
