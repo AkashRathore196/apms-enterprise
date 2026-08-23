@@ -10,9 +10,9 @@ on:
 
 jobs:
   security-acceptance:
-    name: Keycloak/Kong contract gate
+    name: Keycloak/Kong security acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,18 +25,58 @@ jobs:
           test -f infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
           test -f infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
           test -f docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
+          test -f infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
           grep -q 'missing token -> 401' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
           grep -q 'invalid signature -> 401' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
           grep -q 'valid token without required authority -> 403' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
-          echo 'Security acceptance contract is present and internally consistent.'
 
-      - name: Publish contract evidence
+      - name: Detect disposable security runtime
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f infrastructure/security/docker-compose.security.yml; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start disposable security runtime
+        if: steps.runtime.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f infrastructure/security/docker-compose.security.yml up -d
+
+      - name: Verify disposable runtime readiness
+        if: steps.runtime.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120 bash -c 'until curl -fsS http://localhost:8080/health/ready >/dev/null 2>&1; do sleep 2; done'
+
+      - name: Run bounded authorization acceptance
+        if: steps.runtime.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f infrastructure/security/keycloak/kong-jwt-acceptance.sh
+          chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
+          infrastructure/security/keycloak/kong-jwt-acceptance.sh
+
+      - name: Publish contract/runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mdm-security-acceptance-contract
+          name: mdm-security-acceptance-evidence
           path: |
             infrastructure/security/README.md
             infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
             docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
+
+      - name: Cleanup disposable runtime
+        if: always() && steps.runtime.outputs.available == 'true'
+        shell: bash
+        run: |
+          docker compose -f infrastructure/security/docker-compose.security.yml down -v
