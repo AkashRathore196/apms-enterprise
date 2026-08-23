@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.DataJpaTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -41,6 +42,7 @@ class ProcessedEventIdempotencyPostgresIntegrationTest {
     private ProcessedEventRepository processedEvents;
 
     @Test
+    @Transactional
     void duplicateDeliveryProducesOneDurableProcessingRecord() throws Exception {
         UUID eventId = UUID.randomUUID();
         EventEnvelope envelope = new EventEnvelope(
@@ -54,8 +56,9 @@ class ProcessedEventIdempotencyPostgresIntegrationTest {
                 UUID.randomUUID().toString(),
                 null,
                 java.util.Map.of("partyId", "test-party"));
-        String rawEvent = new ObjectMapper().writeValueAsString(envelope);
-        PartyEventConsumer consumer = new PartyEventConsumer(processedEvents, new ObjectMapper());
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        String rawEvent = mapper.writeValueAsString(envelope);
+        PartyEventConsumer consumer = new PartyEventConsumer(processedEvents, mapper);
 
         consumer.consume(rawEvent);
         consumer.consume(rawEvent);
