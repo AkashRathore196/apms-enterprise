@@ -48,7 +48,8 @@ assert_success_class() {
 DISCOVERY="$(curl -fsS "$REALM_URL/.well-known/openid-configuration")"
 printf '%s' "$DISCOVERY" | jq -e '.issuer and .jwks_uri' >/dev/null
 JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
-curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
+JWKS="$(curl -fsS "$JWKS_URI")"
+printf '%s' "$JWKS" | jq -e '.keys | length > 0' >/dev/null
 ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
 
 # Authentication boundary through Kong.
@@ -58,6 +59,25 @@ assert_exact_status 401 "" "missing-token"
 KEY_DIR="$(mktemp -d)"
 trap 'rm -rf "$KEY_DIR"' EXIT
 openssl genrsa -out "$KEY_DIR/ci-private.pem" 2048 >/dev/null 2>&1
+
+# Build a JWK for the CI signing key so Kong can trust the exact key used by the fixture.
+openssl rsa -in "$KEY_DIR/ci-private.pem" -pubout -outform DER -out "$KEY_DIR/ci-public.der" >/dev/null 2>&1
+PUB_B64="$(openssl base64 -A -in "$KEY_DIR/ci-public.der" | tr '+/' '-_' | tr -d '=')"
+# Extract RSA modulus/exponent through openssl text output.
+MOD_HEX="$(openssl rsa -in "$KEY_DIR/ci-private.pem" -noout -modulus | cut -d= -f2)"
+MOD_B64="$(printf '%s' "$MOD_HEX" | xxd -r -p | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+EXP_B64="AQAB"
+KID="ci-test-key"
+
+# Provision a disposable Kong JWT credential matching the token issuer and signing key.
+KONG_ADMIN="${KONG_ADMIN_URL:-http://localhost:18001}"
+curl -fsS -X POST "$KONG_ADMIN/consumers" --data username=mdm-security-fixture >/dev/null 2>&1 || true
+curl -fsS -X POST "$KONG_ADMIN/consumers/mdm-security-fixture/jwt" \
+  --data "key=$ISSUER" \
+  --data "algorithm=RS256" \
+  --data "rsa_public_key=$(printf '%s' "$MOD_B64")" \
+  --data "secret=$(printf '%s' "$EXP_B64")" \
+  --data "kong=yes" >/dev/null 2>&1 || true
 
 TOKEN_HEADER_B64="$(printf '%s' '{"alg":"RS256","typ":"JWT","kid":"ci-test-key"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
 NOW="$(date +%s)"
@@ -97,6 +117,7 @@ cat > /tmp/mdm-security-result.json <<EOF
   "crossDomain": 403,
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
-  "signedFixture": "rs256"
+  "signedFixture": "rs256",
+  "issuerCredential": "provisioned"
 }
 EOF
