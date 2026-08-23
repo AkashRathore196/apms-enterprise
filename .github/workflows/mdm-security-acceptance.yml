@@ -98,7 +98,7 @@ jobs:
                 --realm master \
                 --user admin \
                 --password admin >/dev/null && \
-              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n") && \
+              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n\" ") && \
               test -n "$CLIENT_ID" && \
               /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID -r apms \
                 -s publicClient=false \
