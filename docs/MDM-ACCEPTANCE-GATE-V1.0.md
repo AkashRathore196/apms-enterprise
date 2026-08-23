@@ -8,7 +8,7 @@
 
 | Gate | Status | Evidence target |
 |---|---|---|
-| PostgreSQL + Kafka integration | OPEN | Executable integration path proves persisted state, publication and consumption |
+| PostgreSQL + Kafka integration | EXECUTION REQUESTED | Executable integration path proves persisted state, publication and consumption |
 | Keycloak/Kong authorization | OPEN | Protected API matrix proves authentication and authorization boundaries |
 | Camunda approval execution | OPEN | Approval flow executes through EWOP integration |
 | OpenSearch projection/rebuild | OPEN | Projection creation and deterministic rebuild validated |
