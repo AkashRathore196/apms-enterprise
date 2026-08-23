@@ -4,8 +4,8 @@ set -euo pipefail
 BASE_URL="${KONG_BASE_URL:-http://localhost:18000}"
 REALM_URL="${KEYCLOAK_REALM_URL:-http://localhost:18080/realms/apms}"
 TOKEN_URL="$REALM_URL/protocol/openid-connect/token"
-CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mdm-test-client}"
-CLIENT_SECRET="${KEYCLOAK_CLIENT_SECRET:-ci-mdm-test-secret}"
+CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mdm-service-client}"
+CLIENT_SECRET="${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET must be supplied by CI}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 2; }; }
 require_cmd curl
@@ -60,14 +60,22 @@ assert_exact_status 401 "" "missing-token"
 
 service_token="$(get_token)"
 
-operator_status="$(request_status "$service_token")"
-if [[ "$operator_status" != "200" && "$operator_status" != "204" ]]; then
-  echo "[service-identity-access] expected approved service identity, got $operator_status" >&2
+service_status="$(request_status "$service_token")"
+if [[ ! "$service_status" =~ ^2[0-9][0-9]$ ]]; then
+  echo "[service-identity-access] expected 2xx for approved service identity, got $service_status" >&2
   cat /tmp/mdm-security-response.txt >&2 || true
   exit 1
 fi
 
-echo "[service-identity-access] HTTP $operator_status"
+body="$(cat /tmp/mdm-security-response.txt)"
+principal="$(printf '%s' "$body" | jq -r '.principal')"
+if [[ "$principal" != "service-account-mdm-service-client" && "$principal" != "mdm-service-client" && "$principal" != "service-account-mdm-service-client" ]]; then
+  echo "[service-identity-integrity] unexpected principal: $principal" >&2
+  cat /tmp/mdm-security-response.txt >&2 || true
+  exit 1
+fi
+
+echo "[service-identity-access] HTTP $service_status principal=$principal"
 
 cat > /tmp/mdm-security-result.json <<EOF
 {
@@ -75,6 +83,7 @@ cat > /tmp/mdm-security-result.json <<EOF
   "serviceIdentity": "2xx",
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
-  "tokenAuthority": "keycloak-issued"
+  "tokenAuthority": "keycloak-issued",
+  "identityIntegrity": "verified"
 }
 EOF
