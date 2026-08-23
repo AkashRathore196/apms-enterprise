@@ -1,0 +1,37 @@
+name: MDM Processed Event Idempotency Acceptance
+
+on:
+  push:
+    branches:
+      - feature/mdm-eventing-rebased
+    paths:
+      - 'domains/mdm/**'
+      - '.github/workflows/mdm-processed-event-idempotency.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  processed-event-idempotency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: domains/mdm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Validate Maven model
+        run: mvn -B -DskipTests validate
+
+      - name: Run PostgreSQL-backed durable idempotency acceptance test
+        run: mvn -B -Dtest=ProcessedEventIdempotencyPostgresIntegrationTest test
