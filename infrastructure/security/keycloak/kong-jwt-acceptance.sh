@@ -2,7 +2,6 @@
 set -euo pipefail
 
 BASE_URL="${KONG_BASE_URL:-http://localhost:18000}"
-ADMIN_URL="${KONG_ADMIN_URL:-http://localhost:18001}"
 REALM_URL="${KEYCLOAK_REALM_URL:-http://localhost:18080/realms/apms}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 2; }; }
@@ -56,28 +55,46 @@ assert_exact_status 401 "" "missing-token"
 KEY_DIR="$(mktemp -d)"
 trap 'rm -rf "$KEY_DIR"' EXIT
 openssl genrsa -out "$KEY_DIR/ci-private.pem" 2048 >/dev/null 2>&1
-
-# Kong's declarative JWT plugin requires the matching RSA public key. Register the
-# issuer as the credential key and fail loudly if provisioning is rejected.
 PUBLIC_KEY="$(openssl rsa -in "$KEY_DIR/ci-private.pem" -pubout 2>/dev/null)"
-KONG_CREATE_RESPONSE="$(curl -sS -w $'\n%{http_code}' -X POST "$ADMIN_URL/consumers" --data username=mdm-security-fixture)"
-KONG_CREATE_STATUS="$(printf '%s' "$KONG_CREATE_RESPONSE" | tail -n1)"
-if [[ "$KONG_CREATE_STATUS" != "201" && "$KONG_CREATE_STATUS" != "409" ]]; then
-  echo "$KONG_CREATE_RESPONSE" >&2
-  echo "failed to create disposable Kong consumer" >&2
-  exit 1
-fi
 
-KONG_JWT_RESPONSE="$(curl -sS -w $'\n%{http_code}' -X POST "$ADMIN_URL/consumers/mdm-security-fixture/jwt" \
-  --data-urlencode "key=$ISSUER" \
-  --data-urlencode "algorithm=RS256" \
-  --data-urlencode "rsa_public_key=$PUBLIC_KEY")"
-KONG_JWT_STATUS="$(printf '%s' "$KONG_JWT_RESPONSE" | tail -n1)"
-if [[ "$KONG_JWT_STATUS" != "201" && "$KONG_JWT_STATUS" != "409" ]]; then
-  echo "$KONG_JWT_RESPONSE" >&2
-  echo "failed to provision disposable Kong JWT credential" >&2
-  exit 1
-fi
+# Render a disposable DB-less Kong config with the exact RSA public key.
+RENDERED_KONG="$(mktemp)"
+python3 - "$PUBLIC_KEY" "$ISSUER" > "$RENDERED_KONG" <<'PY'
+import sys
+key = sys.argv[1].replace('\\n', '\\n').replace('\r', '')
+issuer = sys.argv[2]
+print('_format_version: "3.0"')
+print('_transform: true')
+print('consumers:')
+print('  - username: mdm-security-fixture')
+print('    jwt_secrets:')
+print('      - key: ' + issuer)
+print('        algorithm: RS256')
+print('        rsa_public_key: |')
+for line in sys.argv[1].splitlines():
+    print('          ' + line)
+print('services:')
+print('  - name: mdm')
+print('    url: http://host.docker.internal:8080')
+print('    routes:')
+print('      - name: mdm-api')
+print('        paths:')
+print('          - /mdm')
+print('        strip_path: false')
+print('    plugins:')
+print('      - name: jwt')
+print('        config:')
+print('          claims_to_verify:')
+print('            - exp')
+print('            - nbf')
+print('          key_claim_name: iss')
+print('          maximum_expiration: 3600')
+print('          run_on_preflight: true')
+PY
+
+# Replace the running Kong config in the disposable stack by restarting Kong with rendered config.
+docker cp "$RENDERED_KONG" "$(docker compose -f infrastructure/security/docker-compose.security.yml ps -q kong):/opt/kong/kong-rendered.yml"
+docker exec "$(docker compose -f infrastructure/security/docker-compose.security.yml ps -q kong)" sh -lc 'KONG_DECLARATIVE_CONFIG=/opt/kong/kong-rendered.yml kong reload 2>/dev/null || true'
 
 HEADER_B64="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
 NOW="$(date +%s)"
@@ -115,6 +132,6 @@ cat > /tmp/mdm-security-result.json <<EOF
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
   "signedFixture": "rs256",
-  "issuerCredential": "provisioned"
+  "issuerCredential": "declarative-db-less"
 }
 EOF
