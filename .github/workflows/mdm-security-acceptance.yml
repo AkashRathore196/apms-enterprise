@@ -41,6 +41,59 @@ jobs:
         working-directory: domains/mdm
         run: mvn -B -DskipTests package
 
+      - name: Prepare disposable Kong JWT trust material
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mdm-security-key
+          openssl genrsa -out /tmp/mdm-security-key/ci-private.pem 2048 >/dev/null 2>&1
+          openssl rsa -in /tmp/mdm-security-key/ci-private.pem -pubout -out /tmp/mdm-security-key/ci-public.pem >/dev/null 2>&1
+
+          timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null 2>&1; do \
+            docker compose -f infrastructure/security/docker-compose.security.yml up -d keycloak >/dev/null 2>&1 || true; \
+            sleep 2; \
+          done' || true
+
+          if ! docker compose -f infrastructure/security/docker-compose.security.yml ps -q keycloak >/dev/null 2>&1; then
+            docker compose -f infrastructure/security/docker-compose.security.yml up -d keycloak
+          fi
+
+          timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null; do sleep 2; done'
+          ISSUER="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.issuer')"
+
+          python3 - "$ISSUER" /tmp/mdm-security-key/ci-public.pem > /tmp/kong-rendered.yml <<'PY'
+          import pathlib, sys
+          issuer = sys.argv[1]
+          pub = pathlib.Path(sys.argv[2]).read_text()
+          print('_format_version: "3.0"')
+          print('_transform: true')
+          print('consumers:')
+          print('  - username: mdm-security-fixture')
+          print('    jwt_secrets:')
+          print('      - key: ' + issuer)
+          print('        algorithm: RS256')
+          print('        rsa_public_key: |')
+          for line in pub.splitlines():
+              print('          ' + line)
+          print('services:')
+          print('  - name: mdm')
+          print('    url: http://host.docker.internal:8080')
+          print('    routes:')
+          print('      - name: mdm-api')
+          print('        paths:')
+          print('          - /mdm')
+          print('        strip_path: false')
+          print('    plugins:')
+          print('      - name: jwt')
+          print('        config:')
+          print('          claims_to_verify:')
+          print('            - exp')
+          print('            - nbf')
+          print('          key_claim_name: iss')
+          print('          maximum_expiration: 3600')
+          print('          run_on_preflight: true')
+          PY
+
       - name: Start PostgreSQL for MDM
         shell: bash
         run: |
@@ -62,6 +115,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp /tmp/kong-rendered.yml infrastructure/security/kong/kong.yml
           docker compose -f infrastructure/security/docker-compose.security.yml up -d
 
       - name: Start MDM service
@@ -107,6 +161,8 @@ jobs:
 
       - name: Run bounded authorization acceptance
         shell: bash
+        env:
+          KEY_DIR: /tmp/mdm-security-key
         run: |
           set -euo pipefail
           chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
@@ -120,6 +176,7 @@ jobs:
           path: |
             /tmp/mdm-security.log
             /tmp/postgres-security.log
+            /tmp/mdm-security-result.json
             infrastructure/security/README.md
             infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
