@@ -32,5 +32,5 @@ jobs:
       - name: Validate Maven model
         run: mvn -B -DskipTests validate
 
-      - name: Run publisher behavior test only
-        run: mvn -B -Dtest=OutboxPublisherIntegrationTest test
+      - name: Run PostgreSQL-backed publisher integration test
+        run: mvn -B -Dtest=OutboxPublisherPostgresIntegrationTest test
