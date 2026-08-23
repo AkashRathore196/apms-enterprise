@@ -66,7 +66,7 @@ NOW="$(date +%s)"
 make_token() {
   local username="$1" roles_json="$2"
   local payload payload_b64 signing_input signature_b64
-  payload="$(jq -cn --arg sub "$username" --arg iss "$ISSUER" --argjson roles "$roles_json" --argjson iat "$NOW" --argjson exp "$((NOW+600))" '{sub:$sub,iss:$iss,aud:"mdm-api",iat:$iat,exp:$exp,realm_access:{roles:$roles}}')"
+  payload="$(jq -cn --arg sub "$username" --arg iss "$ISSUER" --argjson roles "$roles_json" --argjson iat "$NOW" --argjson nbf "$NOW" --argjson exp "$((NOW+600))" '{sub:$sub,iss:$iss,aud:"mdm-api",iat:$iat,nbf:$nbf,exp:$exp,realm_access:{roles:$roles}}')"
   payload_b64="$(printf '%s' "$payload" | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
   signing_input="$HEADER_B64.$payload_b64"
   signature_b64="$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$PRIVATE_KEY" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
