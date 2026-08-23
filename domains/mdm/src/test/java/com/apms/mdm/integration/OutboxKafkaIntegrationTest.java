@@ -26,7 +26,7 @@ class OutboxKafkaIntegrationTest {
     @Container
     static final GenericContainer<?> kafka =
             new GenericContainer<>(DockerImageName.parse("apache/kafka:3.8.0"))
-                    .withExposedPorts(9092)
+                    .withFixedExposedPort(9092, 9092)
                     .withEnv("KAFKA_NODE_ID", "1")
                     .withEnv("KAFKA_PROCESS_ROLES", "broker,controller")
                     .withEnv("KAFKA_LISTENERS", "PLAINTEXT://:9092,CONTROLLER://:9093")
@@ -46,7 +46,7 @@ class OutboxKafkaIntegrationTest {
     @Test
     void publishesEventAndReceivesItAfterBrokerAcknowledgement() throws Exception {
         String topic = "mdm-outbox-test-" + UUID.randomUUID();
-        String bootstrap = kafka.getHost() + ":" + kafka.getMappedPort(9092);
+        String bootstrap = "127.0.0.1:9092";
         String payload = "{\"partyId\":\"" + UUID.randomUUID() + "\"}";
 
         Map<String, Object> producerProps = Map.of(
