@@ -14,5 +14,7 @@ services:
         config:
           claims_to_verify:
             - exp
+            - nbf
           key_claim_name: iss
           maximum_expiration: 3600
+          run_on_preflight: true
