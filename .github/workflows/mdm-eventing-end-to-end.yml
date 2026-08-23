@@ -1,9 +1,9 @@
 name: MDM Eventing End-to-End Acceptance
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/mdm-eventing-rebased
+      - main
     paths:
       - 'domains/mdm/**'
       - '.github/workflows/mdm-eventing-end-to-end.yml'
