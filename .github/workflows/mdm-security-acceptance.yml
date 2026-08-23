@@ -74,42 +74,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/mdm-security-key
-          openssl genrsa -out /tmp/mdm-security-key/ci-private.pem 2048 >/dev/null 2>&1
-          openssl rsa -in /tmp/mdm-security-key/ci-private.pem -pubout -out /tmp/mdm-security-key/ci-public.pem >/dev/null 2>&1
           ISSUER="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.issuer')"
-          python3 - "$ISSUER" /tmp/mdm-security-key/ci-public.pem > /tmp/kong-rendered.yml <<'PY'
-          import pathlib, sys
-          issuer = sys.argv[1]
-          pub = pathlib.Path(sys.argv[2]).read_text()
-          print('_format_version: "3.0"')
-          print('_transform: true')
-          print('consumers:')
-          print('  - username: mdm-security-fixture')
-          print('    jwt_secrets:')
-          print('      - key: ' + issuer)
-          print('        algorithm: RS256')
-          print('        rsa_public_key: |')
-          for line in pub.splitlines():
-              print('          ' + line)
-          print('services:')
-          print('  - name: mdm')
-          print('    url: http://host.docker.internal:8080')
-          print('    routes:')
-          print('      - name: mdm-api')
-          print('        paths:')
-          print('          - /mdm')
-          print('        strip_path: false')
-          print('    plugins:')
-          print('      - name: jwt')
-          print('        config:')
-          print('          claims_to_verify:')
-          print('            - exp')
-          print('            - nbf')
-          print('          key_claim_name: iss')
-          print('          maximum_expiration: 3600')
-          print('          run_on_preflight: true')
-          PY
+          JWKS_URI="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.jwks_uri')"
+          curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
+          cat > /tmp/kong-rendered.yml <<EOF
+          _format_version: "3.0"
+          _transform: true
+          services:
+            - name: mdm
+              url: http://host.docker.internal:8080
+              routes:
+                - name: mdm-api
+                  paths:
+                    - /mdm
+                  strip_path: false
+              plugins:
+                - name: jwt
+                  config:
+                    claims_to_verify:
+                      - exp
+                      - nbf
+                    key_claim_name: iss
+                    maximum_expiration: 3600
+                    run_on_preflight: true
+          EOF
+          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI"
 
       - name: Start Kong
         shell: bash
@@ -134,6 +123,7 @@ jobs:
             --spring.datasource.username=mdm \
             --spring.datasource.password=mdm \
             --spring.jpa.hibernate.ddl-auto=validate \
+            --spring.security.oauth2.resourceserver.jwt.issuer-uri='http://localhost:18080/realms/apms' \
             --spring.security.oauth2.resourceserver.jwt.jwk-set-uri='http://localhost:18080/realms/apms/protocol/openid-connect/certs' \
             > /tmp/mdm-security.log 2>&1 &
 
@@ -158,9 +148,10 @@ jobs:
       - name: Run bounded authorization acceptance
         shell: bash
         env:
-          KEY_DIR: /tmp/mdm-security-key
+          KEYCLOAK_CLIENT_SECRET: ${{ secrets.MDM_SECURITY_CLIENT_SECRET }}
         run: |
           set -euo pipefail
+          test -n "${KEYCLOAK_CLIENT_SECRET:-}" || { echo 'Missing repository secret MDM_SECURITY_CLIENT_SECRET' >&2; exit 1; }
           chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
           infrastructure/security/keycloak/kong-jwt-acceptance.sh
 
