@@ -3,11 +3,13 @@ set -euo pipefail
 
 BASE_URL="${KONG_BASE_URL:-http://localhost:18000}"
 REALM_URL="${KEYCLOAK_REALM_URL:-http://localhost:18080/realms/apms}"
+TOKEN_URL="$REALM_URL/protocol/openid-connect/token"
+CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mdm-test-client}"
+CLIENT_SECRET="${KEYCLOAK_CLIENT_SECRET:-}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 2; }; }
 require_cmd curl
 require_cmd jq
-require_cmd openssl
 
 request_status() {
   local token="${1:-}"
@@ -18,13 +20,6 @@ request_status() {
   else
     curl -sS -o /tmp/mdm-security-response.txt -w '%{http_code}' "$url"
   fi
-}
-
-request_body() {
-  local token="$1"
-  curl -fsS \
-    -H "Authorization: Bearer $token" \
-    "${BASE_URL}/mdm/api/v1/security/probe"
 }
 
 assert_exact_status() {
@@ -65,38 +60,43 @@ assert_success_and_identity() {
   echo "[$label] HTTP $actual principal=$principal role=$expected_role"
 }
 
+get_token() {
+  local user="$1" password="$2"
+  local response status body
+  local -a args
+  args=(
+    -sS -X POST "$TOKEN_URL"
+    -H 'Content-Type: application/x-www-form-urlencoded'
+    --data-urlencode "client_id=$CLIENT_ID"
+    --data-urlencode 'grant_type=password'
+    --data-urlencode "username=$user"
+    --data-urlencode "password=$password"
+  )
+  if [[ -n "$CLIENT_SECRET" ]]; then
+    args+=(--data-urlencode "client_secret=$CLIENT_SECRET")
+  fi
+  response="$(curl "${args[@]}" -w $'\n%{http_code}')"
+  status="$(printf '%s' "$response" | tail -n1)"
+  body="$(printf '%s' "$response" | sed '$d')"
+  if [[ "$status" != "200" ]]; then
+    echo "[token:$user] Keycloak token request failed with HTTP $status" >&2
+    printf '%s\n' "$body" >&2
+    exit 1
+  fi
+  printf '%s' "$body" | jq -er '.access_token'
+}
+
 DISCOVERY="$(curl -fsS "$REALM_URL/.well-known/openid-configuration")"
 printf '%s' "$DISCOVERY" | jq -e '.issuer and .jwks_uri' >/dev/null
-ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
-JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
-curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
+curl -fsS "$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')" | jq -e '.keys | length > 0' >/dev/null
 
 # Authentication boundary through Kong.
 assert_exact_status 401 "" "missing-token"
 
-# The workflow must provision the signed-key material before Kong starts.
-KEY_DIR="${KEY_DIR:-/tmp/mdm-security-key}"
-PRIVATE_KEY="$KEY_DIR/ci-private.pem"
-if [[ ! -f "$PRIVATE_KEY" ]]; then
-  echo "missing pre-provisioned CI signing key: $PRIVATE_KEY" >&2
-  exit 1
-fi
-
-HEADER_B64="$(printf '%s' '{"alg":"RS256","typ":"JWT","kid":"ci-test-key"}' | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
-NOW="$(date +%s)"
-make_token() {
-  local username="$1" roles_json="$2"
-  local payload payload_b64 signing_input signature_b64
-  payload="$(jq -cn --arg sub "$username" --arg iss "$ISSUER" --argjson roles "$roles_json" --argjson iat "$NOW" --argjson nbf "$NOW" --argjson exp "$((NOW+600))" '{sub:$sub,iss:$iss,aud:"mdm-api",iat:$iat,nbf:$nbf,exp:$exp,realm_access:{roles:$roles}}')"
-  payload_b64="$(printf '%s' "$payload" | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
-  signing_input="$HEADER_B64.$payload_b64"
-  signature_b64="$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$PRIVATE_KEY" -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
-  printf '%s.%s' "$signing_input" "$signature_b64"
-}
-
-operator_token="$(make_token mdm-operator '["mdm_operator"]')"
-reader_token="$(make_token mdm-reader '["mdm_reader"]')"
-cross_token="$(make_token cross-domain '[]')"
+# Use real Keycloak-issued tokens so Kong and MDM validate against the same issuer/JWKS authority.
+operator_token="$(get_token mdm-operator operator)"
+reader_token="$(get_token mdm-reader reader)"
+cross_token="$(get_token cross-domain cross)"
 
 assert_success_and_identity "$operator_token" "mdm-operator" "mdm_operator" "operator-access"
 assert_success_and_identity "$reader_token" "mdm-reader" "mdm_reader" "reader-access"
@@ -117,8 +117,7 @@ cat > /tmp/mdm-security-result.json <<EOF
   "crossDomain": 403,
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
-  "signedFixture": "rs256",
-  "issuerCredential": "preprovisioned-db-less",
+  "signedFixture": "keycloak-issued",
   "identityIntegrity": "verified"
 }
 EOF
