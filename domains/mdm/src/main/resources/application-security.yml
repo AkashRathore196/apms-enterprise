@@ -1,0 +1,7 @@
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${APMS_SECURITY_ISSUER:http://localhost:18080/realms/apms}
+          jwk-set-uri: ${APMS_SECURITY_JWK_SET_URI:http://localhost:18080/realms/apms/protocol/openid-connect/certs}
