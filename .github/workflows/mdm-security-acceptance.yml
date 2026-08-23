@@ -77,17 +77,22 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${KEYCLOAK_CLIENT_SECRET:-}" || { echo 'Missing repository secret MDM_SECURITY_CLIENT_SECRET' >&2; exit 1; }
-          printf '%s' "$KEYCLOAK_CLIENT_SECRET" > /tmp/mdm-security-client-secret
-          docker compose -f infrastructure/security/docker-compose.security.yml exec -T keycloak sh -lc '\
-            /opt/keycloak/bin/kcadm.sh config credentials \
-              --server http://localhost:8080 \
-              --realm master \
-              --user admin \
-              --password admin >/dev/null && \
-            CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n") && \
-            test -n "$CLIENT_ID" && \
-            SECRET=$(cat /tmp/mdm-security-client-secret) && \
-            /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID -r apms -s publicClient=false -s serviceAccountsEnabled=true -s directAccessGrantsEnabled=false -s standardFlowEnabled=false -s clientId=mdm-service-client -s secret="$SECRET" >/dev/null' < /tmp/mdm-security-client-secret
+          docker compose -f infrastructure/security/docker-compose.security.yml exec -T \
+            -e KC_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" keycloak sh -lc '\
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server http://localhost:8080 \
+                --realm master \
+                --user admin \
+                --password admin >/dev/null && \
+              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n") && \
+              test -n "$CLIENT_ID" && \
+              /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID -r apms \
+                -s publicClient=false \
+                -s serviceAccountsEnabled=true \
+                -s directAccessGrantsEnabled=false \
+                -s standardFlowEnabled=false \
+                -s clientId=mdm-service-client \
+                -s secret="$KC_CLIENT_SECRET" >/dev/null'
 
       - name: Prepare Kong trust material
         shell: bash
@@ -196,6 +201,5 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f /tmp/mdm-security-client-secret
           docker compose -f infrastructure/security/docker-compose.security.yml down -v || true
           docker rm -f apms-mdm-security-postgres >/dev/null 2>&1 || true
