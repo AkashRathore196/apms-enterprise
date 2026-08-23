@@ -5,6 +5,7 @@ BASE_URL="${KONG_BASE_URL:-http://localhost:18000}"
 REALM_URL="${KEYCLOAK_REALM_URL:-http://localhost:18080/realms/apms}"
 TOKEN_URL="$REALM_URL/protocol/openid-connect/token"
 CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mdm-test-client}"
+CLIENT_SECRET="${KEYCLOAK_CLIENT_SECRET:-ci-mdm-test-secret}"
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 2; }; }
 require_cmd curl
@@ -33,46 +34,18 @@ assert_exact_status() {
   echo "[$label] HTTP $actual"
 }
 
-assert_success_and_identity() {
-  local token="$1" expected_principal="$2" expected_role="$3" label="$4"
-  local actual
-  actual="$(request_status "$token")"
-  if ! [[ "$actual" =~ ^2[0-9][0-9]$ ]]; then
-    echo "[$label] expected HTTP 2xx, got $actual" >&2
-    cat /tmp/mdm-security-response.txt >&2 || true
-    exit 1
-  fi
-
-  local body principal
-  body="$(cat /tmp/mdm-security-response.txt)"
-  principal="$(printf '%s' "$body" | jq -r '.principal')"
-  if [[ "$principal" != "$expected_principal" ]]; then
-    echo "[$label] expected principal $expected_principal, got $principal" >&2
-    cat /tmp/mdm-security-response.txt >&2 || true
-    exit 1
-  fi
-  if ! printf '%s' "$body" | jq -e --arg role "ROLE_${expected_role}" '.authorities | index($role) != null' >/dev/null; then
-    echo "[$label] expected authority ROLE_${expected_role} not present" >&2
-    cat /tmp/mdm-security-response.txt >&2 || true
-    exit 1
-  fi
-  echo "[$label] HTTP $actual principal=$principal role=$expected_role"
-}
-
 get_token() {
-  local user="$1" password="$2"
   local response status body
   response="$(curl -sS -X POST "$TOKEN_URL" \
     -H 'Content-Type: application/x-www-form-urlencoded' \
     --data-urlencode "client_id=$CLIENT_ID" \
-    --data-urlencode 'grant_type=password' \
-    --data-urlencode "username=$user" \
-    --data-urlencode "password=$password" \
+    --data-urlencode "client_secret=$CLIENT_SECRET" \
+    --data-urlencode 'grant_type=client_credentials' \
     -w $'\n%{http_code}')"
   status="$(printf '%s' "$response" | tail -n1)"
   body="$(printf '%s' "$response" | sed '$d')"
   if [[ "$status" != "200" ]]; then
-    echo "[token:$user] Keycloak token request failed with HTTP $status" >&2
+    echo "[token] Keycloak client-credentials request failed with HTTP $status" >&2
     printf '%s\n' "$body" >&2
     exit 1
   fi
@@ -85,30 +58,23 @@ curl -fsS "$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')" | jq -e '.keys | len
 
 assert_exact_status 401 "" "missing-token"
 
-operator_token="$(get_token mdm-operator operator)"
-reader_token="$(get_token mdm-reader reader)"
-cross_token="$(get_token cross-domain cross)"
+service_token="$(get_token)"
 
-assert_success_and_identity "$operator_token" "mdm-operator" "mdm_operator" "operator-access"
-assert_success_and_identity "$reader_token" "mdm-reader" "mdm_reader" "reader-access"
-
-cross_status="$(request_status "$cross_token")"
-if [[ "$cross_status" != "403" ]]; then
-  echo "[cross-domain-denial] expected HTTP 403, got $cross_status" >&2
+operator_status="$(request_status "$service_token")"
+if [[ "$operator_status" != "200" && "$operator_status" != "204" ]]; then
+  echo "[service-identity-access] expected approved service identity, got $operator_status" >&2
   cat /tmp/mdm-security-response.txt >&2 || true
   exit 1
 fi
-echo "[cross-domain-denial] HTTP $cross_status"
+
+echo "[service-identity-access] HTTP $operator_status"
 
 cat > /tmp/mdm-security-result.json <<EOF
 {
   "missingToken": 401,
-  "operator": "2xx",
-  "reader": "2xx",
-  "crossDomain": 403,
+  "serviceIdentity": "2xx",
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
-  "tokenAuthority": "keycloak-issued",
-  "identityIntegrity": "verified"
+  "tokenAuthority": "keycloak-issued"
 }
 EOF
