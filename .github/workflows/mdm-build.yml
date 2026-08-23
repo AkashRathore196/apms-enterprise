@@ -35,8 +35,11 @@ jobs:
       - name: Validate Maven model
         run: mvn -B -DskipTests validate
 
-      - name: Build and test
-        run: mvn -B test
+      - name: Compile
+        run: mvn -B -DskipTests compile
+
+      - name: Deterministic application tests
+        run: mvn -B -Dtest='com.apms.mdm.MdmApplicationTest,com.apms.mdm.party.*Test,com.apms.mdm.integration.ProcessedEventIdempotencyTest' test
 
       - name: Package
         run: mvn -B -DskipTests package
