@@ -5,11 +5,12 @@
     {
       "clientId": "mdm-test-client",
       "enabled": true,
-      "publicClient": true,
+      "publicClient": false,
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": ["profile", "email", "roles", "web-origins"]
     },
     {
       "clientId": "mdm-service-client",
@@ -30,6 +31,11 @@
     ]
   },
   "clientScopeMappings": {
+    "mdm-test-client": {
+      "realm": [
+        {"name": "mdm_service"}
+      ]
+    },
     "mdm-service-client": {
       "realm": [
         {"name": "mdm_service"}
