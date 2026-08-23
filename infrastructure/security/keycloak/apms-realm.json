@@ -7,14 +7,18 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "directAccessGrantsEnabled": true
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false
     },
     {
       "clientId": "mdm-service-client",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "directAccessGrantsEnabled": true
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false
     }
   ],
   "roles": {
@@ -28,33 +32,45 @@
     {
       "username": "mdm-operator",
       "enabled": true,
+      "email": "mdm-operator@example.invalid",
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{"type": "password", "value": "operator", "temporary": false}],
+      "credentials": [
+        {"type": "password", "value": "operator", "temporary": false}
+      ],
       "realmRoles": ["mdm_operator"]
     },
     {
       "username": "mdm-reader",
       "enabled": true,
+      "email": "mdm-reader@example.invalid",
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{"type": "password", "value": "reader", "temporary": false}],
+      "credentials": [
+        {"type": "password", "value": "reader", "temporary": false}
+      ],
       "realmRoles": ["mdm_reader"]
     },
     {
       "username": "cross-domain",
       "enabled": true,
+      "email": "cross-domain@example.invalid",
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{"type": "password", "value": "cross", "temporary": false}],
+      "credentials": [
+        {"type": "password", "value": "cross", "temporary": false}
+      ],
       "realmRoles": []
     },
     {
       "username": "mdm-service",
       "enabled": true,
+      "email": "mdm-service@example.invalid",
       "emailVerified": true,
       "requiredActions": [],
-      "credentials": [{"type": "password", "value": "service", "temporary": false}],
+      "credentials": [
+        {"type": "password", "value": "service", "temporary": false}
+      ],
       "realmRoles": ["mdm_service"]
     }
   ]
