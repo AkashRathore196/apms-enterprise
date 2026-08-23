@@ -28,24 +28,32 @@
     {
       "username": "mdm-operator",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{"type": "password", "value": "operator", "temporary": false}],
       "realmRoles": ["mdm_operator"]
     },
     {
       "username": "mdm-reader",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{"type": "password", "value": "reader", "temporary": false}],
       "realmRoles": ["mdm_reader"]
     },
     {
       "username": "cross-domain",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{"type": "password", "value": "cross", "temporary": false}],
       "realmRoles": []
     },
     {
       "username": "mdm-service",
       "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{"type": "password", "value": "service", "temporary": false}],
       "realmRoles": ["mdm_service"]
     }
