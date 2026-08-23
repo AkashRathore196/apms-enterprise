@@ -1,0 +1,42 @@
+name: MDM Security Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/security/**'
+      - 'domains/mdm/**'
+      - '.github/workflows/mdm-security-acceptance.yml'
+  workflow_dispatch:
+
+jobs:
+  security-acceptance:
+    name: Keycloak/Kong contract gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate security acceptance contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f infrastructure/security/README.md
+          test -f infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
+          test -f infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
+          test -f docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
+          grep -q 'missing token -> 401' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
+          grep -q 'invalid signature -> 401' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
+          grep -q 'valid token without required authority -> 403' infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
+          echo 'Security acceptance contract is present and internally consistent.'
+
+      - name: Publish contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdm-security-acceptance-contract
+          path: |
+            infrastructure/security/README.md
+            infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
+            infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
+            docs/ci/mdm-keycloak-kong-acceptance-runbook-v1.0.md
