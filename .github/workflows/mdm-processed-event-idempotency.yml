@@ -1,9 +1,9 @@
 name: MDM Processed Event Idempotency Acceptance
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/mdm-eventing-rebased
+      - main
     paths:
       - 'domains/mdm/**'
       - '.github/workflows/mdm-processed-event-idempotency.yml'
