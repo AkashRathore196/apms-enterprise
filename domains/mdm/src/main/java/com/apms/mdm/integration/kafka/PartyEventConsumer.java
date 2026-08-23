@@ -1,7 +1,6 @@
 package com.apms.mdm.integration.kafka;
 
 import com.apms.mdm.common.event.EventEnvelope;
-import com.apms.mdm.common.outbox.ProcessedEvent;
 import com.apms.mdm.common.outbox.ProcessedEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -29,12 +28,14 @@ public class PartyEventConsumer {
     public void consume(String rawEvent) throws Exception {
         EventEnvelope event = objectMapper.readValue(rawEvent, EventEnvelope.class);
         String eventId = event.eventId().toString();
-        if (processedEvents.existsByEventIdAndConsumerGroup(eventId, GROUP)) {
+
+        // Atomically claim the event for this consumer group. A duplicate delivery
+        // observes zero affected rows and cannot execute the downstream effect.
+        if (processedEvents.claimIfUnprocessed(eventId, GROUP) == 0) {
             return;
         }
 
         // Downstream projection/business handling belongs here.
-        // The processed-event insert is in the same transaction as that handling.
-        processedEvents.save(new ProcessedEvent(eventId, GROUP));
+        // The claim and business handling are in the same database transaction.
     }
 }
