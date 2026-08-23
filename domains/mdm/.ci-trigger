@@ -1,1 +1,4 @@
-CI trigger marker for the isolated Outbox Publisher acceptance workflow. No runtime code or production behavior is changed.
+CI trigger marker for the isolated MDM eventing acceptance workflows.
+
+The canonical PR acceptance gates are now registered on main; this marker triggers PR synchronization so GitHub evaluates the open PR against those gates.
+No runtime code or production behavior is changed.
