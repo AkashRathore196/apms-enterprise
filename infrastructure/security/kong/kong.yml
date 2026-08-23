@@ -18,3 +18,7 @@ services:
           key_claim_name: iss
           maximum_expiration: 3600
           run_on_preflight: true
+
+# Trust material for the disposable CI/local profile is provisioned by the
+# acceptance harness. Production signing keys, bearer tokens, and secrets
+# must never be committed to this repository.
