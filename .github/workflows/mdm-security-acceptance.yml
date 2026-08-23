@@ -70,6 +70,23 @@ jobs:
           set -euo pipefail
           timeout 120 bash -c 'until curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration >/dev/null; do sleep 2; done'
 
+      - name: Provision disposable Keycloak client secret
+        shell: bash
+        env:
+          KEYCLOAK_CLIENT_SECRET: ${{ secrets.MDM_SECURITY_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "${KEYCLOAK_CLIENT_SECRET:-}" || { echo 'Missing repository secret MDM_SECURITY_CLIENT_SECRET' >&2; exit 1; }
+          docker exec -e KC_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" apms-enterprise-keycloak-1 sh -lc '\
+            /opt/keycloak/bin/kcadm.sh config credentials \
+              --server http://localhost:8080 \
+              --realm master \
+              --user admin \
+              --password admin >/dev/null && \
+            CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n") && \
+            test -n "$CLIENT_ID" && \
+            /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID -r apms -s publicClient=false -s serviceAccountsEnabled=true -s directAccessGrantsEnabled=false -s standardFlowEnabled=false -s clientId=mdm-service-client -s secret="$KC_CLIENT_SECRET" >/dev/null'
+
       - name: Prepare Kong trust material
         shell: bash
         run: |
@@ -123,7 +140,6 @@ jobs:
             --spring.datasource.username=mdm \
             --spring.datasource.password=mdm \
             --spring.jpa.hibernate.ddl-auto=validate \
-            --spring.security.oauth2.resourceserver.jwt.issuer-uri='http://localhost:18080/realms/apms' \
             --spring.security.oauth2.resourceserver.jwt.jwk-set-uri='http://localhost:18080/realms/apms/protocol/openid-connect/certs' \
             > /tmp/mdm-security.log 2>&1 &
 
