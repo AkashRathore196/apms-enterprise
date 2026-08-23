@@ -1,4 +1,4 @@
 CI trigger marker for the isolated MDM eventing acceptance workflows.
 
-The canonical PR acceptance gates are now registered on main; this marker triggers PR synchronization so GitHub evaluates the open PR against those gates.
+The canonical PR acceptance gates are registered on main and run from the main-branch workflow definition against the PR head.
 No runtime code or production behavior is changed.
