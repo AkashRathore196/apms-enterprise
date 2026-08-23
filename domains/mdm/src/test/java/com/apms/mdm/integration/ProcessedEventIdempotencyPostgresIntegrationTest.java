@@ -1,10 +1,7 @@
 package com.apms.mdm.integration;
 
-import com.apms.mdm.common.event.EventEnvelope;
 import com.apms.mdm.common.outbox.ProcessedEvent;
 import com.apms.mdm.common.outbox.ProcessedEventRepository;
-import com.apms.mdm.integration.kafka.PartyEventConsumer;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.DataJpaTest;
@@ -15,7 +12,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,42 +39,47 @@ class ProcessedEventIdempotencyPostgresIntegrationTest {
 
     @Test
     @Transactional
-    void duplicateDeliveryProducesOneDurableProcessingRecord() throws Exception {
-        UUID eventId = UUID.randomUUID();
-        EventEnvelope envelope = new EventEnvelope(
-                eventId,
-                "mdm.party.approved.v1",
-                1,
-                "PARTY",
-                UUID.randomUUID(),
-                Instant.now(),
-                "mdm-service",
-                UUID.randomUUID().toString(),
-                null,
-                java.util.Map.of("partyId", "test-party"));
-        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        String rawEvent = mapper.writeValueAsString(envelope);
-        PartyEventConsumer consumer = new PartyEventConsumer(processedEvents, mapper);
+    void duplicateClaimIsIdempotentForOneConsumerGroup() {
+        String eventId = UUID.randomUUID().toString();
+        String consumerGroup = "apms-mdm-golden-path";
 
-        consumer.consume(rawEvent);
-        consumer.consume(rawEvent);
+        int firstClaim = processedEvents.claimIfUnprocessed(eventId, consumerGroup);
+        int duplicateClaim = processedEvents.claimIfUnprocessed(eventId, consumerGroup);
+        processedEvents.flush();
 
-        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(
-                eventId.toString(), "apms-mdm-golden-path"));
+        assertEquals(1, firstClaim);
+        assertEquals(0, duplicateClaim);
+        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(eventId, consumerGroup));
     }
 
     @Test
-    void sameEventCanBeProcessedIndependentlyByDifferentConsumerGroups() {
+    @Transactional
+    void sameEventIsIndependentlyClaimableByDifferentConsumerGroups() {
+        String eventId = UUID.randomUUID().toString();
+        String groupA = "apms-mdm-golden-path";
+        String groupB = "apms-mdm-projection";
+
+        int firstGroupClaim = processedEvents.claimIfUnprocessed(eventId, groupA);
+        int secondGroupClaim = processedEvents.claimIfUnprocessed(eventId, groupB);
+        processedEvents.flush();
+
+        assertEquals(1, firstGroupClaim);
+        assertEquals(1, secondGroupClaim);
+        assertEquals(2, processedEvents.countByEventId(eventId));
+        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(eventId, groupA));
+        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(eventId, groupB));
+    }
+
+    @Test
+    void compositeJpaIdentitySupportsIndependentConsumerGroups() {
         String eventId = UUID.randomUUID().toString();
         String groupA = "apms-mdm-golden-path";
         String groupB = "apms-mdm-projection";
 
         processedEvents.save(new ProcessedEvent(eventId, groupA));
         processedEvents.save(new ProcessedEvent(eventId, groupB));
+        processedEvents.flush();
 
-        assertEquals(2, processedEvents.count());
-        assertEquals(1, processedEvents.countByEventId(eventId));
-        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(eventId, groupA));
-        assertEquals(1, processedEvents.countByEventIdAndConsumerGroup(eventId, groupB));
+        assertEquals(2, processedEvents.countByEventId(eventId));
     }
 }
