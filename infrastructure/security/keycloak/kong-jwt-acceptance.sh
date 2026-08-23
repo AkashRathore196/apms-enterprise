@@ -11,13 +11,20 @@ require_cmd openssl
 
 request_status() {
   local token="${1:-}"
-  local url="${BASE_URL}/mdm/actuator/health"
+  local url="${BASE_URL}/mdm/api/v1/security/probe"
   if [[ -n "$token" ]]; then
     curl -sS -o /tmp/mdm-security-response.txt -w '%{http_code}' \
       -H "Authorization: Bearer $token" "$url"
   else
     curl -sS -o /tmp/mdm-security-response.txt -w '%{http_code}' "$url"
   fi
+}
+
+request_body() {
+  local token="$1"
+  curl -fsS \
+    -H "Authorization: Bearer $token" \
+    "${BASE_URL}/mdm/api/v1/security/probe"
 }
 
 assert_exact_status() {
@@ -32,8 +39,8 @@ assert_exact_status() {
   echo "[$label] HTTP $actual"
 }
 
-assert_success_class() {
-  local token="$1" label="$2"
+assert_success_and_identity() {
+  local token="$1" expected_principal="$2" expected_role="$3" label="$4"
   local actual
   actual="$(request_status "$token")"
   if ! [[ "$actual" =~ ^2[0-9][0-9]$ ]]; then
@@ -41,7 +48,21 @@ assert_success_class() {
     cat /tmp/mdm-security-response.txt >&2 || true
     exit 1
   fi
-  echo "[$label] HTTP $actual"
+
+  local body principal
+  body="$(cat /tmp/mdm-security-response.txt)"
+  principal="$(printf '%s' "$body" | jq -r '.principal')"
+  if [[ "$principal" != "$expected_principal" ]]; then
+    echo "[$label] expected principal $expected_principal, got $principal" >&2
+    cat /tmp/mdm-security-response.txt >&2 || true
+    exit 1
+  fi
+  if ! printf '%s' "$body" | jq -e --arg role "ROLE_${expected_role}" '.authorities | index($role) != null' >/dev/null; then
+    echo "[$label] expected authority ROLE_${expected_role} not present" >&2
+    cat /tmp/mdm-security-response.txt >&2 || true
+    exit 1
+  fi
+  echo "[$label] HTTP $actual principal=$principal role=$expected_role"
 }
 
 DISCOVERY="$(curl -fsS "$REALM_URL/.well-known/openid-configuration")"
@@ -77,8 +98,8 @@ operator_token="$(make_token mdm-operator '["mdm_operator"]')"
 reader_token="$(make_token mdm-reader '["mdm_reader"]')"
 cross_token="$(make_token cross-domain '[]')"
 
-assert_success_class "$operator_token" "operator-access"
-assert_success_class "$reader_token" "reader-access"
+assert_success_and_identity "$operator_token" "mdm-operator" "mdm_operator" "operator-access"
+assert_success_and_identity "$reader_token" "mdm-reader" "mdm_reader" "reader-access"
 
 cross_status="$(request_status "$cross_token")"
 if [[ "$cross_status" != "403" ]]; then
@@ -97,6 +118,7 @@ cat > /tmp/mdm-security-result.json <<EOF
   "keycloakDiscovery": "available",
   "keycloakJwks": "available",
   "signedFixture": "rs256",
-  "issuerCredential": "preprovisioned-db-less"
+  "issuerCredential": "preprovisioned-db-less",
+  "identityIntegrity": "verified"
 }
 EOF
