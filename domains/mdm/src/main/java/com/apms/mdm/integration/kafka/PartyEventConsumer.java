@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class PartyEventConsumer {
-    private static final String GROUP = "apms-mdm-golden-path";
+    static final String GROUP = "apms-mdm-golden-path";
 
     private final ProcessedEventRepository processedEvents;
     private final ObjectMapper objectMapper;
@@ -28,12 +28,13 @@ public class PartyEventConsumer {
     @Transactional
     public void consume(String rawEvent) throws Exception {
         EventEnvelope event = objectMapper.readValue(rawEvent, EventEnvelope.class);
-        if (processedEvents.existsById(event.eventId().toString())) {
+        String eventId = event.eventId().toString();
+        if (processedEvents.existsByEventIdAndConsumerGroup(eventId, GROUP)) {
             return;
         }
 
         // Downstream projection/business handling belongs here.
         // The processed-event insert is in the same transaction as that handling.
-        processedEvents.save(new ProcessedEvent(event.eventId().toString(), GROUP));
+        processedEvents.save(new ProcessedEvent(eventId, GROUP));
     }
 }
