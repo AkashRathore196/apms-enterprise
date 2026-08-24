@@ -98,7 +98,7 @@ jobs:
                 --realm master \
                 --user admin \
                 --password admin >/dev/null && \
-              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n\" ") && \
+              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms -q clientId=mdm-service-client --fields id --format csv | tr -d "\r\n\"") && \
               test -n "$CLIENT_ID" && \
               /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID -r apms \
                 -s publicClient=false \
@@ -132,31 +132,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ISSUER="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.issuer')"
-          JWKS_URI="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration | jq -r '.jwks_uri')"
-          curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
-          cat > /tmp/kong-rendered.yml <<EOF
-          _format_version: "3.0"
-          _transform: true
-          services:
-            - name: mdm
-              url: http://host.docker.internal:8080
-              routes:
-                - name: mdm-api
-                  paths:
-                    - /mdm
-                  strip_path: false
-              plugins:
-                - name: jwt
-                  config:
-                    claims_to_verify:
-                      - exp
-                      - nbf
-                    key_claim_name: iss
-                    maximum_expiration: 3600
-                    run_on_preflight: true
-          EOF
-          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI"
+          DISCOVERY="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration)"
+          ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
+          JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
+          JWKS="$(curl -fsS "$JWKS_URI")"
+          jq -e '.keys | length > 0' >/dev/null <<<"$JWKS"
+          KEY="$(jq -c '.keys | map(select(.kty=="RSA" and .n and .e and .kid)) | .[0]' <<<"$JWKS")"
+          test "$KEY" != "null"
+          KID="$(jq -r '.kid' <<<"$KEY")"
+          N="$(jq -r '.n' <<<"$KEY")"
+          E="$(jq -r '.e' <<<"$KEY")"
+          python3 - "$ISSUER" "$KID" "$N" "$E" > /tmp/kong-rendered.yml <<'PY'
+          import sys
+          issuer, kid, n, e = sys.argv[1:]
+          print('_format_version: "3.0"')
+          print('_transform: true')
+          print('consumers:')
+          print('  - username: mdm-security-keycloak')
+          print('    jwt_secrets:')
+          print(f'      - key: {issuer}')
+          print('        algorithm: RS256')
+          print('        rsa_public_key: |')
+          print('          -----BEGIN RSA PUBLIC KEY-----')
+          print('          ' + n)
+          print('          -----END RSA PUBLIC KEY-----')
+          print('        key_claim_name: iss')
+          print('services:')
+          print('  - name: mdm')
+          print('    url: http://host.docker.internal:8080')
+          print('    routes:')
+          print('      - name: mdm-api')
+          print('        paths:')
+          print('          - /mdm')
+          print('        strip_path: false')
+          print('    plugins:')
+          print('      - name: jwt')
+          print('        config:')
+          print('          claims_to_verify:')
+          print('            - exp')
+          print('            - nbf')
+          print('          key_claim_name: iss')
+          print('          maximum_expiration: 3600')
+          print('          run_on_preflight: true')
+          PY
+          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI" "kid=$KID"
 
       - name: Start Kong
         shell: bash
