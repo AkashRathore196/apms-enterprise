@@ -8,6 +8,10 @@ import com.apms.mdm.party.PartyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -21,6 +25,14 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 @SpringBootTest
 class PartyServiceIntegrationTest {
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class SecurityTestConfiguration {
+        @Bean
+        JwtDecoder jwtDecoder() {
+            return token -> { throw new UnsupportedOperationException("JWT decoding is not exercised by this persistence test"); };
+        }
+    }
 
     @Container
     static final PostgreSQLContainer<?> postgres =
