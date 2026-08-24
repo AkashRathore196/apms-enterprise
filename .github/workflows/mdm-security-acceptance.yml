@@ -121,7 +121,7 @@ jobs:
           KEY_JSON="$(jq -c --arg kid "$TOKEN_KID" '.keys | map(select(.kty=="RSA" and .n and .e and .kid == $kid)) | .[0]' <<<"$JWKS")"
           test "$KEY_JSON" != "null"
           export ISSUER KEY_JSON
-          python3 -c 'import base64,json,os; from pathlib import Path; from cryptography.hazmat.primitives.asymmetric import rsa; from cryptography.hazmat.primitives import serialization; k=json.loads(os.environ["KEY_JSON"]); dec=lambda v:int.from_bytes(base64.urlsafe_b64decode(v+"="*((4-len(v)%4)%4)),"big"); pem=rsa.RSAPublicNumbers(dec(k["e"]),dec(k["n"])).public_key().public_bytes(serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo).decode(); iss=os.environ["ISSUER"]; lines=["_format_version: \"3.0\"","_transform: true","consumers:","  - username: mdm-security-keycloak","    jwt_secrets:",f"      - key: {iss}","        algorithm: RS256","        rsa_public_key: |"] + ["          "+x for x in pem.rstrip().splitlines()] + ["services:","  - name: mdm","    url: http://host.docker.internal:8080","    routes:","      - name: mdm-api","        paths:","          - /mdm","        strip_path: false","    plugins:","      - name: jwt","        config:","          claims_to_verify:","            - exp","          key_claim_name: iss","          maximum_expiration: 3600","          run_on_preflight: true"]; Path("/tmp/kong-rendered.yml").write_text("\\n".join(lines)+"\\n"); print(f"issuer={iss}"); print(f"kid={k[\"kid\"]}")'
+          python3 infrastructure/security/kong/render-jwk-public-key.py
 
       - name: Start Kong
         shell: bash
