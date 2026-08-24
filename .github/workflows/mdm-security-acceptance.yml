@@ -109,68 +109,65 @@ jobs:
           ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
           JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
           ACCESS_TOKEN="$(jq -r '.access_token' /tmp/keycloak-token-check.json)"
-          TOKEN_HEADER_B64="$(printf '%s' "$ACCESS_TOKEN" | cut -d. -f1 | tr '_-' '/+' | awk '{ l=length($0)%4; if(l==2) $0=$0"=="; else if(l==3) $0=$0"="; print }' | base64 -d 2>/dev/null | jq -r '.kid')"
-          test -n "$TOKEN_HEADER_B64" && test "$TOKEN_HEADER_B64" != "null"
+          TOKEN_KID="$(python3 - <<'PY'
+import base64, json, os
+parts = os.environ['ACCESS_TOKEN'].split('.')
+raw = parts[0] + '=' * (-len(parts[0]) % 4)
+print(json.loads(base64.urlsafe_b64decode(raw))['kid'])
+PY
+)"
+          test -n "$TOKEN_KID"
           JWKS="$(curl -fsS "$JWKS_URI")"
-          jq -e '.keys | length > 0' >/dev/null <<<"$JWKS"
-          KEY_JSON="$(jq -c --arg kid "$TOKEN_HEADER_B64" '.keys | map(select(.kty=="RSA" and .n and .e and .kid == $kid)) | .[0]' <<<"$JWKS")"
+          KEY_JSON="$(jq -c --arg kid "$TOKEN_KID" '.keys | map(select(.kty=="RSA" and .n and .e and .kid == $kid)) | .[0]' <<<"$JWKS")"
           test "$KEY_JSON" != "null"
           export ISSUER KEY_JSON
           python3 <<'PY'
-          import base64, json, os
-          from pathlib import Path
-          from cryptography.hazmat.primitives.asymmetric import rsa
-          from cryptography.hazmat.primitives import serialization
+import base64, json, os
+from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 
-          key = json.loads(os.environ['KEY_JSON'])
+key = json.loads(os.environ['KEY_JSON'])
+def b64u_int(value: str) -> int:
+    padded = value + '=' * (-len(value) % 4)
+    return int.from_bytes(base64.urlsafe_b64decode(padded), 'big')
 
-          def b64u_int(value: str) -> int:
-              padded = value + '=' * (-len(value) % 4)
-              return int.from_bytes(base64.urlsafe_b64decode(padded), 'big')
-
-          n = b64u_int(key['n'])
-          e = b64u_int(key['e'])
-          pub = rsa.RSAPublicNumbers(e, n).public_key()
-          pem = pub.public_bytes(
-              encoding=serialization.Encoding.PEM,
-              format=serialization.PublicFormat.SubjectPublicKeyInfo,
-          ).decode()
-
-          issuer = os.environ['ISSUER']
-          lines = [
-              '_format_version: "3.0"',
-              '_transform: true',
-              'consumers:',
-              '  - username: mdm-security-keycloak',
-              '    jwt_secrets:',
-              f'      - key: {issuer}',
-              '        algorithm: RS256',
-              '        rsa_public_key: |',
-          ]
-          lines.extend('          ' + line for line in pem.rstrip().splitlines())
-          lines.extend([
-              'services:',
-              '  - name: mdm',
-              '    url: http://host.docker.internal:8080',
-              '    routes:',
-              '      - name: mdm-api',
-              '        paths:',
-              '          - /mdm',
-              '        strip_path: false',
-              '    plugins:',
-              '      - name: jwt',
-              '        config:',
-              '          claims_to_verify:',
-              '            - exp',
-              '            - nbf',
-              '          key_claim_name: iss',
-              '          maximum_expiration: 3600',
-              '          run_on_preflight: true',
-          ])
-          Path('/tmp/kong-rendered.yml').write_text('\n'.join(lines) + '\n')
-          print(f"issuer={issuer}")
-          print(f"kid={key['kid']}")
-          PY
+pub = rsa.RSAPublicNumbers(b64u_int(key['e']), b64u_int(key['n'])).public_key()
+pem = pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+issuer = os.environ['ISSUER']
+lines = [
+    '_format_version: "3.0"',
+    '_transform: true',
+    'consumers:',
+    '  - username: mdm-security-keycloak',
+    '    jwt_secrets:',
+    f'      - key: {issuer}',
+    '        algorithm: RS256',
+    '        rsa_public_key: |',
+]
+lines.extend('          ' + line for line in pem.rstrip().splitlines())
+lines.extend([
+    'services:',
+    '  - name: mdm',
+    '    url: http://host.docker.internal:8080',
+    '    routes:',
+    '      - name: mdm-api',
+    '        paths:',
+    '          - /mdm',
+    '        strip_path: false',
+    '    plugins:',
+    '      - name: jwt',
+    '        config:',
+    '          claims_to_verify:',
+    '            - exp',
+    '          key_claim_name: iss',
+    '          maximum_expiration: 3600',
+    '          run_on_preflight: true',
+])
+Path('/tmp/kong-rendered.yml').write_text('\n'.join(lines) + '\n')
+print(f"issuer={issuer}")
+print(f"kid={key['kid']}")
+PY
 
       - name: Start Kong
         shell: bash
