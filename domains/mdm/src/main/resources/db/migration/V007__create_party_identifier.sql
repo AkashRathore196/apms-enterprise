@@ -37,6 +37,8 @@ CREATE UNIQUE INDEX uq_party_identifier_active_identity
   )
   WHERE lifecycle_state IN ('ACTIVE', 'SUSPENDED');
 
+-- v1.0 keeps primary designation scoped to identifier type within a Party.
+-- Multi-context primary designation remains explicitly out of scope.
 CREATE UNIQUE INDEX uq_party_identifier_primary
   ON party_identifier (party_id, identifier_type)
   WHERE is_primary = TRUE AND lifecycle_state = 'ACTIVE';
