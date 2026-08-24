@@ -42,7 +42,7 @@ class PartyServiceIntegrationTest {
     @Autowired OutboxRepository outboxRepository;
 
     @Test
-    void createSubmitApprovePersistsMasterAuditAndOutbox() {
+    void createSubmitReviewApproveActivatePersistsMasterAuditAndOutbox() {
         UUID partyId = partyService.createOrganization("APMS Integration Test Org", "APMS Test Org");
 
         assertTrue(partyRepository.findById(partyId).isPresent());
@@ -50,12 +50,14 @@ class PartyServiceIntegrationTest {
                 organizationRepository.findByPartyPartyId(partyId).getLegalName());
 
         partyService.submit(partyId);
+        partyService.moveToReview(partyId);
         partyService.approve(partyId);
+        partyService.activate(partyId);
 
         assertEquals("ACTIVE", partyRepository.findById(partyId).orElseThrow()
                 .getLifecycleState().name());
 
-        assertTrue(auditRepository.count() >= 3);
-        assertTrue(outboxRepository.count() >= 3);
+        assertTrue(auditRepository.count() >= 5);
+        assertTrue(outboxRepository.count() >= 5);
     }
 }

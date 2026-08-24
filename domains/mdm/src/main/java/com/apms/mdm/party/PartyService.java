@@ -45,11 +45,27 @@ public class PartyService {
     }
 
     @Transactional
+    public void moveToReview(UUID partyId) {
+        Party party = parties.findById(partyId).orElseThrow();
+        party.moveToReview();
+        recordAudit(partyId, "REVIEW");
+        recordEvent(partyId, "mdm.party.review.v1");
+    }
+
+    @Transactional
     public void approve(UUID partyId) {
         Party party = parties.findById(partyId).orElseThrow();
         party.approve();
         recordAudit(partyId, "APPROVED");
         recordEvent(partyId, "mdm.party.approved.v1");
+    }
+
+    @Transactional
+    public void activate(UUID partyId) {
+        Party party = parties.findById(partyId).orElseThrow();
+        party.activate();
+        recordAudit(partyId, "ACTIVATED");
+        recordEvent(partyId, "mdm.party.activated.v1");
     }
 
     private void recordAudit(UUID partyId, String operation) {

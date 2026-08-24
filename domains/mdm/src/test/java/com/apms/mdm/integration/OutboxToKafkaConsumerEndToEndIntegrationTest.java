@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -34,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         "spring.kafka.listener.missing-topics-fatal=false",
         "mdm.outbox.poll-ms=600000"
 })
+@ActiveProfiles("test")
 class OutboxToKafkaConsumerEndToEndIntegrationTest {
 
     private static final String TOPIC = "mdm.party.approved.v1";
@@ -48,6 +50,9 @@ class OutboxToKafkaConsumerEndToEndIntegrationTest {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://localhost:18080/realms/apms");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://localhost:18080/realms/apms/protocol/openid-connect/certs");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jws-algorithms", () -> "RS256");
     }
 
     @Autowired

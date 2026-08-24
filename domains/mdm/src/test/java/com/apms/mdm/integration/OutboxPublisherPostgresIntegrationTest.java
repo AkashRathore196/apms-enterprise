@@ -38,6 +38,9 @@ class OutboxPublisherPostgresIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://localhost:18080/realms/apms");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://localhost:18080/realms/apms/protocol/openid-connect/certs");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jws-algorithms", () -> "RS256");
     }
 
     @Autowired
