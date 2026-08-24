@@ -116,42 +116,63 @@ jobs:
           JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
           JWKS="$(curl -fsS "$JWKS_URI")"
           jq -e '.keys | length > 0' >/dev/null <<<"$JWKS"
-          KEY="$(jq -c '.keys | map(select(.kty=="RSA" and .n and .e and .kid)) | .[0]' <<<"$JWKS")"
-          test "$KEY" != "null"
-          KID="$(jq -r '.kid' <<<"$KEY")"
-          N="$(jq -r '.n' <<<"$KEY")"
-          E="$(jq -r '.e' <<<"$KEY")"
-          python3 - "$ISSUER" "$KID" "$N" "$E" > /tmp/kong-rendered.yml <<'PY'
-          import sys
-          issuer, kid, n, e = sys.argv[1:]
-          print('_format_version: "3.0"')
-          print('_transform: true')
-          print('consumers:')
-          print('  - username: mdm-security-keycloak')
-          print('    jwt_secrets:')
-          print(f'      - key: {issuer}')
-          print('        algorithm: RS256')
-          print('        rsa_public_key: |')
-          print('          # populated by runtime converter')
-          print('services:')
-          print('  - name: mdm')
-          print('    url: http://host.docker.internal:8080')
-          print('    routes:')
-          print('      - name: mdm-api')
-          print('        paths:')
-          print('          - /mdm')
-          print('        strip_path: false')
-          print('    plugins:')
-          print('      - name: jwt')
-          print('        config:')
-          print('          claims_to_verify:')
-          print('            - exp')
-          print('            - nbf')
-          print('          key_claim_name: iss')
-          print('          maximum_expiration: 3600')
-          print('          run_on_preflight: true')
+          KEY_JSON="$(jq -c '.keys | map(select(.kty=="RSA" and .n and .e and .kid)) | .[0]' <<<"$JWKS")"
+          test "$KEY_JSON" != "null"
+          export ISSUER KEY_JSON
+          python3 <<'PY'
+          import base64, json, os, textwrap
+          from pathlib import Path
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          from cryptography.hazmat.primitives import serialization
+
+          key = json.loads(os.environ['KEY_JSON'])
+          def b64u_int(value: str) -> int:
+              padded = value + '=' * (-len(value) % 4)
+              return int.from_bytes(base64.urlsafe_b64decode(padded), 'big')
+
+          n = b64u_int(key['n'])
+          e = b64u_int(key['e'])
+          pub = rsa.RSAPublicNumbers(e, n).public_key()
+          pem = pub.public_bytes(
+              encoding=serialization.Encoding.PEM,
+              format=serialization.PublicFormat.SubjectPublicKeyInfo,
+          ).decode()
+
+          issuer = os.environ['ISSUER']
+          lines = [
+              '_format_version: "3.0"',
+              '_transform: true',
+              'consumers:',
+              '  - username: mdm-security-keycloak',
+              '    jwt_secrets:',
+              f'      - key: {issuer}',
+              '        algorithm: RS256',
+              '        rsa_public_key: |',
+          ]
+          lines.extend('          ' + line for line in pem.rstrip().splitlines())
+          lines.extend([
+              'services:',
+              '  - name: mdm',
+              '    url: http://host.docker.internal:8080',
+              '    routes:',
+              '      - name: mdm-api',
+              '        paths:',
+              '          - /mdm',
+              '        strip_path: false',
+              '    plugins:',
+              '      - name: jwt',
+              '        config:',
+              '          claims_to_verify:',
+              '            - exp',
+              '            - nbf',
+              '          key_claim_name: iss',
+              '          maximum_expiration: 3600',
+              '          run_on_preflight: true',
+          ])
+          Path('/tmp/kong-rendered.yml').write_text('\n'.join(lines) + '\n')
+          print(f"issuer={issuer}")
+          print(f"kid={key['kid']}")
           PY
-          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI" "kid=$KID"
 
       - name: Start Kong
         shell: bash
@@ -221,6 +242,7 @@ jobs:
             /tmp/postgres-security.log
             /tmp/mdm-security-result.json
             /tmp/keycloak-token-check.json
+            /tmp/kong-rendered.yml
             infrastructure/security/README.md
             infrastructure/security/keycloak/kong-jwt-verification-contract-v1.0.md
             infrastructure/security/mdm-keycloak-kong-acceptance-plan-v1.0.md
