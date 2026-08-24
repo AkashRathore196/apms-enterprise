@@ -101,10 +101,11 @@ jobs:
             exit 1
           fi
           TOKEN="$(jq -er '.access_token' /tmp/keycloak-token-check.json)"
-          printf '%s' "$TOKEN" >> "$GITHUB_OUTPUT"
-          echo 'access_token<<TOKENEOF' >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$TOKEN" >> "$GITHUB_OUTPUT"
-          echo 'TOKENEOF' >> "$GITHUB_OUTPUT"
+          {
+            echo 'access_token<<TOKENEOF'
+            printf '%s\n' "$TOKEN"
+            echo 'TOKENEOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Prepare Kong trust material
         shell: bash
