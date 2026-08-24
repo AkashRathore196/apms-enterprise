@@ -21,7 +21,7 @@ public class PartyIdentifierController {
 
     @PostMapping
     public ResponseEntity<IdentifierResponse> create(
-            @PathVariable UUID partyId,
+            @PathVariable("partyId") UUID partyId,
             @Valid @RequestBody CreateIdentifierRequest request) {
         UUID identifierId = service.create(
                 partyId,
@@ -38,27 +38,27 @@ public class PartyIdentifierController {
     }
 
     @PostMapping("/{identifierId}/suspend")
-    public ResponseEntity<Void> suspend(@PathVariable UUID partyId, @PathVariable UUID identifierId) {
+    public ResponseEntity<Void> suspend(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
         service.suspend(identifierId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{identifierId}/expire")
-    public ResponseEntity<Void> expire(@PathVariable UUID partyId, @PathVariable UUID identifierId) {
+    public ResponseEntity<Void> expire(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
         service.expire(identifierId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{identifierId}/retire")
-    public ResponseEntity<Void> retire(@PathVariable UUID partyId, @PathVariable UUID identifierId) {
+    public ResponseEntity<Void> retire(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
         service.retire(identifierId);
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{identifierId}/primary")
     public ResponseEntity<Void> setPrimary(
-            @PathVariable UUID partyId,
-            @PathVariable UUID identifierId,
+            @PathVariable("partyId") UUID partyId,
+            @PathVariable("identifierId") UUID identifierId,
             @Valid @RequestBody PrimaryRequest request) {
         service.setPrimary(identifierId, request.primary());
         return ResponseEntity.noContent().build();
