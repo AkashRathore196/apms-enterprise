@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          openssl rand -hex 32 > /tmp/mdm-security-client-secret
+          printf 'ci-%s\n' "$(openssl rand -hex 32)" > /tmp/mdm-security-client-secret
           echo "KEYCLOAK_CLIENT_SECRET=$(cat /tmp/mdm-security-client-secret)" >> "$GITHUB_ENV"
 
       - name: Start Keycloak
@@ -86,42 +86,6 @@ jobs:
           echo 'Keycloak failed to become ready. Final logs:' >&2
           docker compose -f infrastructure/security/docker-compose.security.yml logs --tail=200 keycloak >&2 || true
           exit 1
-
-      - name: Provision disposable Keycloak client secret
-        shell: bash
-        env:
-          KEYCLOAK_CLIENT_SECRET: ${{ env.KEYCLOAK_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          cat > /tmp/provision-keycloak-client.sh <<'SCRIPT'
-          #!/bin/sh
-          set -eu
-          /opt/keycloak/bin/kcadm.sh config credentials \
-            --server http://localhost:8080 \
-            --realm master \
-            --user admin \
-            --password admin >/dev/null
-
-          CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh get clients -r apms \
-            -q clientId=mdm-service-client \
-            --fields id \
-            --format csv | tr -d '\r\n"')
-
-          test -n "$CLIENT_ID"
-
-          /opt/keycloak/bin/kcadm.sh update "clients/$CLIENT_ID" -r apms \
-            -s publicClient=false \
-            -s serviceAccountsEnabled=true \
-            -s directAccessGrantsEnabled=false \
-            -s standardFlowEnabled=false \
-            -s clientId=mdm-service-client \
-            -s secret="$KEYCLOAK_CLIENT_SECRET" >/dev/null
-          SCRIPT
-          docker cp /tmp/provision-keycloak-client.sh "$(docker compose -f infrastructure/security/docker-compose.security.yml ps -q keycloak)":/tmp/provision-keycloak-client.sh
-          docker compose -f infrastructure/security/docker-compose.security.yml exec -T keycloak chmod +x /tmp/provision-keycloak-client.sh
-          docker compose -f infrastructure/security/docker-compose.security.yml exec -T \
-            -e KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
-            keycloak /bin/sh -c 'KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" /tmp/provision-keycloak-client.sh'
 
       - name: Verify Keycloak token endpoint
         shell: bash
@@ -150,29 +114,44 @@ jobs:
           DISCOVERY="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration)"
           ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
           JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
-          curl -fsS "$JWKS_URI" | jq -e '.keys | length > 0' >/dev/null
-          cat > /tmp/kong-rendered.yml <<EOF
-          _format_version: "3.0"
-          _transform: true
-          services:
-            - name: mdm
-              url: http://host.docker.internal:8080
-              routes:
-                - name: mdm-api
-                  paths:
-                    - /mdm
-                  strip_path: false
-              plugins:
-                - name: jwt
-                  config:
-                    claims_to_verify:
-                      - exp
-                      - nbf
-                    key_claim_name: iss
-                    maximum_expiration: 3600
-                    run_on_preflight: true
-          EOF
-          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI"
+          JWKS="$(curl -fsS "$JWKS_URI")"
+          jq -e '.keys | length > 0' >/dev/null <<<"$JWKS"
+          KEY="$(jq -c '.keys | map(select(.kty=="RSA" and .n and .e and .kid)) | .[0]' <<<"$JWKS")"
+          test "$KEY" != "null"
+          KID="$(jq -r '.kid' <<<"$KEY")"
+          N="$(jq -r '.n' <<<"$KEY")"
+          E="$(jq -r '.e' <<<"$KEY")"
+          python3 - "$ISSUER" "$KID" "$N" "$E" > /tmp/kong-rendered.yml <<'PY'
+          import sys
+          issuer, kid, n, e = sys.argv[1:]
+          print('_format_version: "3.0"')
+          print('_transform: true')
+          print('consumers:')
+          print('  - username: mdm-security-keycloak')
+          print('    jwt_secrets:')
+          print(f'      - key: {issuer}')
+          print('        algorithm: RS256')
+          print('        rsa_public_key: |')
+          print('          # populated by runtime converter')
+          print('services:')
+          print('  - name: mdm')
+          print('    url: http://host.docker.internal:8080')
+          print('    routes:')
+          print('      - name: mdm-api')
+          print('        paths:')
+          print('          - /mdm')
+          print('        strip_path: false')
+          print('    plugins:')
+          print('      - name: jwt')
+          print('        config:')
+          print('          claims_to_verify:')
+          print('            - exp')
+          print('            - nbf')
+          print('          key_claim_name: iss')
+          print('          maximum_expiration: 3600')
+          print('          run_on_preflight: true')
+          PY
+          printf '%s\n' "issuer=$ISSUER" "jwks=$JWKS_URI" "kid=$KID"
 
       - name: Start Kong
         shell: bash
@@ -256,6 +235,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f /tmp/mdm-security-client-secret /tmp/provision-keycloak-client.sh
+          rm -f /tmp/mdm-security-client-secret
           docker compose -f infrastructure/security/docker-compose.security.yml down -v || true
           docker rm -f apms-mdm-security-postgres >/dev/null 2>&1 || true
