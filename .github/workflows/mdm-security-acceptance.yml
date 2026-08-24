@@ -58,14 +58,6 @@ jobs:
           set -euo pipefail
           timeout 90 bash -c 'until docker exec apms-mdm-security-postgres pg_isready -U mdm -d apms_mdm >/dev/null 2>&1; do sleep 2; done'
 
-      - name: Generate disposable Keycloak client secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          printf 'ci-%s\n' "$(openssl rand -hex 32)" > /tmp/mdm-security-client-secret
-          echo "KEYCLOAK_CLIENT_SECRET=$(cat /tmp/mdm-security-client-secret)" >> "$GITHUB_ENV"
-
       - name: Start Keycloak
         shell: bash
         run: |
@@ -89,6 +81,8 @@ jobs:
 
       - name: Verify Keycloak token endpoint
         shell: bash
+        env:
+          KEYCLOAK_CLIENT_SECRET: ci-mdm-service-secret
         run: |
           set -euo pipefail
           DISCOVERY="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration)"
@@ -120,12 +114,13 @@ jobs:
           test "$KEY_JSON" != "null"
           export ISSUER KEY_JSON
           python3 <<'PY'
-          import base64, json, os, textwrap
+          import base64, json, os
           from pathlib import Path
           from cryptography.hazmat.primitives.asymmetric import rsa
           from cryptography.hazmat.primitives import serialization
 
           key = json.loads(os.environ['KEY_JSON'])
+
           def b64u_int(value: str) -> int:
               padded = value + '=' * (-len(value) % 4)
               return int.from_bytes(base64.urlsafe_b64decode(padded), 'big')
@@ -210,6 +205,7 @@ jobs:
             --spring.datasource.username=mdm \
             --spring.datasource.password=mdm \
             --spring.jpa.hibernate.ddl-auto=validate \
+            --spring.security.oauth2.resourceserver.jwt.issuer-uri='http://localhost:18080/realms/apms' \
             --spring.security.oauth2.resourceserver.jwt.jwk-set-uri='http://localhost:18080/realms/apms/protocol/openid-connect/certs' \
             > /tmp/mdm-security.log 2>&1 &
 
@@ -227,6 +223,8 @@ jobs:
 
       - name: Run bounded authorization acceptance
         shell: bash
+        env:
+          KEYCLOAK_CLIENT_SECRET: ci-mdm-service-secret
         run: |
           set -euo pipefail
           chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
@@ -257,6 +255,5 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f /tmp/mdm-security-client-secret
           docker compose -f infrastructure/security/docker-compose.security.yml down -v || true
           docker rm -f apms-mdm-security-postgres >/dev/null 2>&1 || true
