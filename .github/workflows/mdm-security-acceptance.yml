@@ -80,6 +80,7 @@ jobs:
           exit 1
 
       - name: Verify Keycloak token endpoint
+        id: verify-token
         shell: bash
         env:
           KEYCLOAK_CLIENT_SECRET: ci-mdm-service-secret
@@ -99,7 +100,11 @@ jobs:
             cat /tmp/keycloak-token-check.json >&2 || true
             exit 1
           fi
-          jq -e '.access_token' /tmp/keycloak-token-check.json >/dev/null
+          TOKEN="$(jq -er '.access_token' /tmp/keycloak-token-check.json)"
+          printf '%s' "$TOKEN" >> "$GITHUB_OUTPUT"
+          echo 'access_token<<TOKENEOF' >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$TOKEN" >> "$GITHUB_OUTPUT"
+          echo 'TOKENEOF' >> "$GITHUB_OUTPUT"
 
       - name: Prepare Kong trust material
         shell: bash
@@ -221,7 +226,7 @@ PY
           cat /tmp/mdm-security.log >&2 || true
           exit 1
 
-      - name: Run bounded authorization acceptance
+      - name: Run bounded authentication acceptance
         shell: bash
         env:
           MDM_SECURITY_ACCESS_TOKEN: ${{ steps.verify-token.outputs.access_token }}
