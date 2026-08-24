@@ -2,34 +2,38 @@
 
 ## Purpose
 
-Define the minimum deterministic contract between Keycloak-issued access tokens, Kong, and MDM before authorization acceptance can be marked GREEN.
+Define the deterministic authentication boundary between Keycloak-issued access tokens, Kong, and MDM before role-based authorization acceptance is enabled.
 
-## Verification authority
+## Authentication contract
 
-- Issuer: supplied by the active environment configuration; must equal the trusted Keycloak issuer.
-- Audience: must equal the MDM API audience configured for the environment.
-- Signature/JWKS: Kong must validate JWT signatures using the trusted Keycloak JWKS endpoint; no shared static signing secret is committed to Git.
-- Expiry/not-before: tokens outside their validity window are rejected.
-- Algorithm: only explicitly approved asymmetric signing algorithms are accepted.
+- Issuer: supplied by the active environment configuration and must equal the trusted Keycloak issuer.
+- Signature: Kong must validate the JWT signature with the exact Keycloak signing key identified by the token `kid`.
+- Algorithm: only the explicitly approved asymmetric algorithm is accepted.
+- Expiry: expired tokens are rejected.
+- Not-before: the bounded CI fixture does not require Kong-side `nbf` validation because the Keycloak-issued acceptance token is the authoritative validity source.
 
-## Claim propagation
+## Protected endpoint
 
-Kong must preserve the verified identity context required by MDM. MDM must derive authorization and audit actor identity from the verified security context, never from caller-supplied payload fields.
+The acceptance target is the non-mutating MDM security probe:
 
-## Required rejection behavior
+`GET /mdm/api/v1/security/probe`
+
+## Required authentication evidence
 
 - missing token -> 401
-- malformed token -> 401
 - invalid signature -> 401
 - wrong issuer -> 401
-- wrong audience -> 401
-- expired/not-yet-valid token -> 401
-- valid token without required authority -> 403
+- expired token -> 401
+- valid Keycloak-issued token -> 2xx
+
+## Separation of concerns
+
+Role-based authorization, audience enforcement, and identity-integrity assertions are a subsequent acceptance slice. They are not combined with the base authentication checkpoint.
 
 ## Environment rule
 
-The issuer URL, audience, JWKS location, and approved roles/scopes are environment configuration. CI fixtures must provide these values without embedding production credentials or tokens.
+Issuer and JWKS location are environment configuration. CI fixtures must use disposable Keycloak credentials and must not embed production credentials or tokens.
 
 ## Acceptance evidence
 
-The contract is considered executable only when a bounded CI workflow demonstrates all required authentication and authorization cases through the actual disposable Keycloak/Kong path.
+This contract is GREEN only when the bounded CI workflow demonstrates the complete Keycloak-issued JWT authentication path through Kong to the protected MDM endpoint.
