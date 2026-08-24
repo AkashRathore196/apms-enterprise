@@ -2,6 +2,7 @@ package com.apms.mdm.party;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.UUID;
 
 public interface PartyIdentifierRepository extends JpaRepository<PartyIdentifier, UUID> {
@@ -10,7 +11,7 @@ public interface PartyIdentifierRepository extends JpaRepository<PartyIdentifier
             String normalizedIdentifierValue,
             String issuingAuthority,
             String issuingJurisdiction,
-            java.util.Collection<PartyIdentifierLifecycleState> lifecycleStates);
+            Collection<PartyIdentifierLifecycleState> lifecycleStates);
 
     long countByPartyPartyIdAndIdentifierTypeAndPrimaryTrueAndLifecycleState(
             UUID partyId,
