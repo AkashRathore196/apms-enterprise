@@ -109,7 +109,7 @@ jobs:
           ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
           JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
           ACCESS_TOKEN="$(jq -r '.access_token' /tmp/keycloak-token-check.json)"
-          TOKEN_KID="$(python3 - <<'PY'
+          TOKEN_KID="$(ACCESS_TOKEN="$ACCESS_TOKEN" python3 - <<'PY'
 import base64, json, os
 parts = os.environ['ACCESS_TOKEN'].split('.')
 raw = parts[0] + '=' * (-len(parts[0]) % 4)
@@ -224,9 +224,10 @@ PY
       - name: Run bounded authorization acceptance
         shell: bash
         env:
-          KEYCLOAK_CLIENT_SECRET: ci-mdm-service-secret
+          MDM_SECURITY_ACCESS_TOKEN: ${{ steps.verify-token.outputs.access_token }}
         run: |
           set -euo pipefail
+          test -n "${MDM_SECURITY_ACCESS_TOKEN:-}" || { echo 'Validated access token was not exported'; exit 1; }
           chmod +x infrastructure/security/keycloak/kong-jwt-acceptance.sh
           infrastructure/security/keycloak/kong-jwt-acceptance.sh
 
