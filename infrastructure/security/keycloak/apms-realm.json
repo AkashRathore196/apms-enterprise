@@ -10,6 +10,7 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
+      "secret": "ci-mdm-test-secret",
       "defaultClientScopes": ["profile", "email", "roles", "web-origins"]
     },
     {
@@ -20,6 +21,7 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
+      "secret": "ci-mdm-service-secret",
       "defaultClientScopes": ["profile", "email", "roles", "web-origins"]
     }
   ],
