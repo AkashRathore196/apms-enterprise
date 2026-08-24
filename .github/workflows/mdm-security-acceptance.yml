@@ -108,9 +108,12 @@ jobs:
           DISCOVERY="$(curl -fsS http://localhost:18080/realms/apms/.well-known/openid-configuration)"
           ISSUER="$(printf '%s' "$DISCOVERY" | jq -r '.issuer')"
           JWKS_URI="$(printf '%s' "$DISCOVERY" | jq -r '.jwks_uri')"
+          ACCESS_TOKEN="$(jq -r '.access_token' /tmp/keycloak-token-check.json)"
+          TOKEN_HEADER_B64="$(printf '%s' "$ACCESS_TOKEN" | cut -d. -f1 | tr '_-' '/+' | awk '{ l=length($0)%4; if(l==2) $0=$0"=="; else if(l==3) $0=$0"="; print }' | base64 -d 2>/dev/null | jq -r '.kid')"
+          test -n "$TOKEN_HEADER_B64" && test "$TOKEN_HEADER_B64" != "null"
           JWKS="$(curl -fsS "$JWKS_URI")"
           jq -e '.keys | length > 0' >/dev/null <<<"$JWKS"
-          KEY_JSON="$(jq -c '.keys | map(select(.kty=="RSA" and .n and .e and .kid)) | .[0]' <<<"$JWKS")"
+          KEY_JSON="$(jq -c --arg kid "$TOKEN_HEADER_B64" '.keys | map(select(.kty=="RSA" and .n and .e and .kid == $kid)) | .[0]' <<<"$JWKS")"
           test "$KEY_JSON" != "null"
           export ISSUER KEY_JSON
           python3 <<'PY'
