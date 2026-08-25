@@ -34,14 +34,14 @@ public class PartyIdentifierService {
     @Transactional
     public UUID create(UUID partyId, String identifierType, String identifierValue,
                        String issuingAuthority, String issuingJurisdiction, String sourceSystem,
-                       Instant validFrom, Instant validTo, boolean primary) {
+                       Instant validFrom, Instant validTo, boolean isPrimary) {
         Party party = parties.findById(partyId).orElseThrow();
         String normalized = normalize(identifierValue);
         if (identifiers.existsByIdentifierTypeAndNormalizedIdentifierValueAndIssuingAuthorityAndIssuingJurisdictionAndLifecycleStateIn(
                 identifierType, normalized, blankToNull(issuingAuthority), blankToNull(issuingJurisdiction), CURRENT_STATES)) {
             throw new IllegalStateException("MDM-006 DUPLICATE_IDENTIFIER");
         }
-        if (primary && identifiers.countByPartyPartyIdAndIdentifierTypeAndPrimaryTrueAndLifecycleState(
+        if (isPrimary && identifiers.countByPartyPartyIdAndIdentifierTypeAndPrimaryTrueAndLifecycleState(
                 partyId, identifierType, PartyIdentifierLifecycleState.ACTIVE) > 0) {
             throw new IllegalStateException("MDM-007 DUPLICATE_PRIMARY_IDENTIFIER");
         }
@@ -49,7 +49,7 @@ public class PartyIdentifierService {
         PartyIdentifier identifier = new PartyIdentifier(
                 party, identifierType, identifierValue, normalized,
                 issuingAuthority, issuingJurisdiction, sourceSystem,
-                validFrom, validTo, primary);
+                validFrom, validTo, isPrimary);
         identifiers.save(identifier);
         audit(identifier, "CREATED");
         event(identifier, "mdm.party.identifier.created.v1");
@@ -65,44 +65,44 @@ public class PartyIdentifierService {
     }
 
     @Transactional
-    public void suspend(UUID identifierId) {
-        PartyIdentifier identifier = get(identifierId);
+    public void suspend(UUID partyId, UUID identifierId) {
+        PartyIdentifier identifier = getOwned(partyId, identifierId);
         identifier.suspend();
         audit(identifier, "SUSPENDED");
         event(identifier, "mdm.party.identifier.suspended.v1");
     }
 
     @Transactional
-    public void expire(UUID identifierId) {
-        PartyIdentifier identifier = get(identifierId);
+    public void expire(UUID partyId, UUID identifierId) {
+        PartyIdentifier identifier = getOwned(partyId, identifierId);
         identifier.expire();
         audit(identifier, "EXPIRED");
         event(identifier, "mdm.party.identifier.expired.v1");
     }
 
     @Transactional
-    public void retire(UUID identifierId) {
-        PartyIdentifier identifier = get(identifierId);
+    public void retire(UUID partyId, UUID identifierId) {
+        PartyIdentifier identifier = getOwned(partyId, identifierId);
         identifier.retire();
         audit(identifier, "RETIRED");
         event(identifier, "mdm.party.identifier.retired.v1");
     }
 
     @Transactional
-    public void setPrimary(UUID identifierId, boolean primary) {
-        PartyIdentifier identifier = get(identifierId);
-        if (primary && identifiers.countByPartyPartyIdAndIdentifierTypeAndPrimaryTrueAndLifecycleState(
-                identifier.getParty().getPartyId(), identifier.getIdentifierType(), PartyIdentifierLifecycleState.ACTIVE) > 0
+    public void setPrimary(UUID partyId, UUID identifierId, boolean isPrimary) {
+        PartyIdentifier identifier = getOwned(partyId, identifierId);
+        if (isPrimary && identifiers.countByPartyPartyIdAndIdentifierTypeAndPrimaryTrueAndLifecycleState(
+                partyId, identifier.getIdentifierType(), PartyIdentifierLifecycleState.ACTIVE) > 0
                 && !identifier.isPrimary()) {
             throw new IllegalStateException("MDM-007 DUPLICATE_PRIMARY_IDENTIFIER");
         }
-        identifier.changePrimary(primary);
-        audit(identifier, primary ? "PRIMARY" : "UNPRIMARY");
+        identifier.changePrimary(isPrimary);
+        audit(identifier, isPrimary ? "PRIMARY" : "UNPRIMARY");
         event(identifier, "mdm.party.identifier.primary-changed.v1");
     }
 
-    private PartyIdentifier get(UUID id) {
-        return identifiers.findById(id).orElseThrow();
+    private PartyIdentifier getOwned(UUID partyId, UUID identifierId) {
+        return identifiers.findByIdentifierIdAndPartyPartyId(identifierId, partyId).orElseThrow();
     }
 
     private void audit(PartyIdentifier identifier, String operation) {
