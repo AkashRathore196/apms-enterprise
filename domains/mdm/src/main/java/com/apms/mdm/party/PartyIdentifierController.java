@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -34,7 +35,32 @@ public class PartyIdentifierController {
                 request.validTo(),
                 request.primary());
         return ResponseEntity.created(URI.create("/api/v1/parties/" + partyId + "/identifiers/" + identifierId))
-                .body(new IdentifierResponse(identifierId, partyId));
+                .body(new IdentifierResponse(identifierId, partyId, request.identifierType(), request.identifierValue(),
+                        request.issuingAuthority(), request.issuingJurisdiction(), request.sourceSystem(),
+                        request.validFrom(), request.validTo(), request.primary(), PartyIdentifierLifecycleState.ACTIVE, null,
+                        null, null));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<IdentifierResponse>> list(@PathVariable("partyId") UUID partyId) {
+        List<IdentifierResponse> responses = service.list(partyId).stream()
+                .map(identifier -> new IdentifierResponse(
+                        identifier.getIdentifierId(),
+                        identifier.getParty().getPartyId(),
+                        identifier.getIdentifierType(),
+                        identifier.getIdentifierValue(),
+                        identifier.getIssuingAuthority(),
+                        identifier.getIssuingJurisdiction(),
+                        identifier.getSourceSystem(),
+                        identifier.getValidFrom(),
+                        identifier.getValidTo(),
+                        identifier.isPrimary(),
+                        identifier.getLifecycleState(),
+                        identifier.getVersion(),
+                        identifier.getCreatedAt(),
+                        identifier.getUpdatedAt()))
+                .toList();
+        return ResponseEntity.ok(responses);
     }
 
     @PostMapping("/{identifierId}/suspend")
@@ -76,5 +102,19 @@ public class PartyIdentifierController {
 
     public record PrimaryRequest(@NotNull Boolean primary) {}
 
-    public record IdentifierResponse(UUID identifierId, UUID partyId) {}
+    public record IdentifierResponse(
+            UUID identifierId,
+            UUID partyId,
+            String identifierType,
+            String identifierValue,
+            String issuingAuthority,
+            String issuingJurisdiction,
+            String sourceSystem,
+            Instant validFrom,
+            Instant validTo,
+            boolean primary,
+            PartyIdentifierLifecycleState lifecycleState,
+            Long version,
+            Instant createdAt,
+            Instant updatedAt) {}
 }
