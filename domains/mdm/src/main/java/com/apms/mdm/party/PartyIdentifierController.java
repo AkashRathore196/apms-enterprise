@@ -33,11 +33,11 @@ public class PartyIdentifierController {
                 request.sourceSystem(),
                 request.validFrom(),
                 request.validTo(),
-                request.primary());
+                request.isPrimary());
         return ResponseEntity.created(URI.create("/api/v1/parties/" + partyId + "/identifiers/" + identifierId))
                 .body(new IdentifierResponse(identifierId, partyId, request.identifierType(), request.identifierValue(),
                         request.issuingAuthority(), request.issuingJurisdiction(), request.sourceSystem(),
-                        request.validFrom(), request.validTo(), request.primary(), PartyIdentifierLifecycleState.ACTIVE, null,
+                        request.validFrom(), request.validTo(), request.isPrimary(), PartyIdentifierLifecycleState.ACTIVE, null,
                         null, null));
     }
 
@@ -65,19 +65,19 @@ public class PartyIdentifierController {
 
     @PostMapping("/{identifierId}/suspend")
     public ResponseEntity<Void> suspend(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
-        service.suspend(identifierId);
+        service.suspend(partyId, identifierId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{identifierId}/expire")
     public ResponseEntity<Void> expire(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
-        service.expire(identifierId);
+        service.expire(partyId, identifierId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{identifierId}/retire")
     public ResponseEntity<Void> retire(@PathVariable("partyId") UUID partyId, @PathVariable("identifierId") UUID identifierId) {
-        service.retire(identifierId);
+        service.retire(partyId, identifierId);
         return ResponseEntity.noContent().build();
     }
 
@@ -86,7 +86,7 @@ public class PartyIdentifierController {
             @PathVariable("partyId") UUID partyId,
             @PathVariable("identifierId") UUID identifierId,
             @Valid @RequestBody PrimaryRequest request) {
-        service.setPrimary(identifierId, request.primary());
+        service.setPrimary(partyId, identifierId, request.isPrimary());
         return ResponseEntity.noContent().build();
     }
 
@@ -98,9 +98,9 @@ public class PartyIdentifierController {
             String sourceSystem,
             Instant validFrom,
             Instant validTo,
-            boolean primary) {}
+            boolean isPrimary) {}
 
-    public record PrimaryRequest(@NotNull Boolean primary) {}
+    public record PrimaryRequest(@NotNull Boolean isPrimary) {}
 
     public record IdentifierResponse(
             UUID identifierId,
@@ -112,7 +112,7 @@ public class PartyIdentifierController {
             String sourceSystem,
             Instant validFrom,
             Instant validTo,
-            boolean primary,
+            boolean isPrimary,
             PartyIdentifierLifecycleState lifecycleState,
             Long version,
             Instant createdAt,

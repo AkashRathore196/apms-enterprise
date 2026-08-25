@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface PartyIdentifierRepository extends JpaRepository<PartyIdentifier, UUID> {
@@ -20,4 +21,6 @@ public interface PartyIdentifierRepository extends JpaRepository<PartyIdentifier
             PartyIdentifierLifecycleState lifecycleState);
 
     List<PartyIdentifier> findAllByPartyPartyIdOrderByCreatedAtAsc(UUID partyId);
+
+    Optional<PartyIdentifier> findByIdentifierIdAndPartyPartyId(UUID identifierId, UUID partyId);
 }
