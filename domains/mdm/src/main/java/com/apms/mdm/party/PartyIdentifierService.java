@@ -56,6 +56,14 @@ public class PartyIdentifierService {
         return identifier.getIdentifierId();
     }
 
+    @Transactional(readOnly = true)
+    public List<PartyIdentifier> list(UUID partyId) {
+        if (!parties.existsById(partyId)) {
+            throw new IllegalStateException("MDM-002 PARTY_NOT_FOUND");
+        }
+        return identifiers.findAllByPartyPartyIdOrderByCreatedAtAsc(partyId);
+    }
+
     @Transactional
     public void suspend(UUID identifierId) {
         PartyIdentifier identifier = get(identifierId);
